@@ -252,3 +252,53 @@ def upload_mission(title, rover=None, waypoints=None, payload=None):
         ],
     }).insert(ignore_permissions=True)
     return doc.name
+
+
+# ---- operator revocation (Phase D) ----
+def _next_revocation_epoch():
+    rows = frappe.get_all("Operator Revocation", fields=["epoch"], order_by="epoch desc", limit=1)
+    return ((rows[0].epoch or 0) + 1) if rows else 1
+
+
+@frappe.whitelist()
+def revoke_operator(operator, scope="All Rovers", rover=None, reason=None):
+    """Revoke an operator (fleet-wide or per rover). Bumps the affected allowlist epoch so
+    a reconnecting rover detects the change (the reconnect handshake)."""
+    epoch = _next_revocation_epoch()
+    rev = frappe.get_doc({
+        "doctype": "Operator Revocation", "operator": operator, "scope": scope,
+        "rover": rover if scope == "Specific Rover" else None,
+        "status": "Active", "epoch": epoch, "reason": reason,
+    }).insert(ignore_permissions=True)
+
+    filters = {"operator": operator}
+    if scope == "Specific Rover" and rover:
+        filters["rover"] = rover
+    for entry in frappe.get_all("Rover Operator Allowlist", filters=filters, pluck="name"):
+        frappe.db.set_value("Rover Operator Allowlist", entry, {"enabled": 0, "epoch": epoch})
+    frappe.db.set_value("Operator", operator, "status", "Revoked")
+    return {"name": rev.name, "epoch": epoch}
+
+
+@frappe.whitelist()
+def ack_revocation(revocation, rover):
+    """A reconnecting rover acknowledges it applied the revocation bundle."""
+    doc = frappe.get_doc("Operator Revocation", revocation)
+    doc.append("applied_acks", {"rover": rover, "acked_on": now_datetime()})
+    doc.save(ignore_permissions=True)
+    return {"revocation": revocation, "acked_rovers": len(doc.applied_acks)}
+
+
+@frappe.whitelist()
+def lift_revocation(revocation):
+    """Lift a revocation: re-enable the operator and the affected allowlist entries."""
+    doc = frappe.get_doc("Operator Revocation", revocation)
+    doc.status = "Lifted"
+    doc.save(ignore_permissions=True)
+    frappe.db.set_value("Operator", doc.operator, "status", "Active")
+    filters = {"operator": doc.operator}
+    if doc.scope == "Specific Rover" and doc.rover:
+        filters["rover"] = doc.rover
+    for entry in frappe.get_all("Rover Operator Allowlist", filters=filters, pluck="name"):
+        frappe.db.set_value("Rover Operator Allowlist", entry, "enabled", 1)
+    return {"revocation": revocation, "status": "Lifted"}
