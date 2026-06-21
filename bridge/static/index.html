@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Friday Command Center — Live Console</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; font: 14px/1.5 -apple-system, system-ui, sans-serif; background: #0d1117; color: #e6edf3; }
+  header { padding: 14px 20px; border-bottom: 1px solid #222b36; display: flex; align-items: center; gap: 12px; }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  #status { font-size: 12px; padding: 2px 8px; border-radius: 10px; background: #341a1a; color: #f38b8b; }
+  #status.up { background: #16301c; color: #6fd38a; }
+  main { display: grid; grid-template-columns: 320px 1fr; gap: 18px; padding: 18px 20px; }
+  .card { background: #161b22; border: 1px solid #222b36; border-radius: 8px; padding: 14px 16px; margin-bottom: 18px; }
+  .card h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: #8b98a5; margin: 0 0 10px; }
+  .kv { display: flex; justify-content: space-between; padding: 3px 0; font-variant-numeric: tabular-nums; }
+  .kv span:first-child { color: #8b98a5; }
+  label { display: block; font-size: 12px; color: #8b98a5; margin: 8px 0 2px; }
+  input { width: 100%; box-sizing: border-box; background: #0d1117; border: 1px solid #30363d; color: #e6edf3; border-radius: 6px; padding: 6px 8px; font: inherit; }
+  button { margin-top: 12px; width: 100%; background: #238636; border: 0; color: #fff; border-radius: 6px; padding: 9px; font: 600 14px/1 inherit; cursor: pointer; }
+  button:disabled { background: #30363d; cursor: not-allowed; }
+  .hint { font-size: 11px; color: #6e7681; margin-top: 6px; }
+  .warn { color: #d29922; }
+  #cmdout { font-size: 12px; margin-top: 10px; white-space: pre-wrap; }
+  #feed { max-height: 78vh; overflow: auto; }
+  .ev { padding: 6px 8px; border-radius: 6px; margin-bottom: 6px; border-left: 3px solid #30363d; background: #0d1117; }
+  .ev.fault { border-left-color: #f38b8b; } .ev.ack { border-left-color: #6fd38a; } .ev.odom { border-left-color: #58a6ff; }
+  .ev .t { color: #6e7681; font-size: 11px; } .ev .k { font-weight: 600; text-transform: uppercase; font-size: 11px; margin-right: 6px; }
+  code { color: #d2a8ff; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🛰️ Friday Command Center — Live Console</h1>
+  <span id="status">connecting…</span>
+</header>
+<main>
+  <div>
+    <div class="card">
+      <h2>Rover — last known</h2>
+      <div class="kv"><span>rover</span><span id="rover">—</span></div>
+      <div class="kv"><span>pose x</span><span id="x">—</span></div>
+      <div class="kv"><span>pose y</span><span id="y">—</span></div>
+      <div class="kv"><span>θ (rad)</span><span id="theta">—</span></div>
+      <div class="kv"><span>updated</span><span id="updated">—</span></div>
+    </div>
+    <div class="card">
+      <h2>Command console — client-side signed</h2>
+      <label>Operator ID</label><input id="operator" value="OP-001" />
+      <label>Rover ID</label><input id="cmdrover" value="MARK1-001" />
+      <label>Linear velocity (m/s)</label><input id="v" value="0.5" />
+      <label>Angular velocity (rad/s)</label><input id="w" value="0.0" />
+      <label>Ed25519 private key (hex)</label><input id="priv" placeholder="64 hex chars" />
+      <div class="hint warn">⚠ Dev only: the key is pasted here. In production it lives in a
+        hardware token / OS keystore via the signing agent. It is used <b>only</b> in your
+        browser (Web Crypto) and never sent to the server.</div>
+      <button id="send">Sign &amp; send command</button>
+      <div id="cmdout"></div>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Live event feed (telemetry · acks · faults)</h2>
+    <div id="feed"></div>
+  </div>
+</main>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const hexToBytes = (h) => { const a = new Uint8Array(h.length / 2); for (let i = 0; i < a.length; i++) a[i] = parseInt(h.substr(i * 2, 2), 16); return a; };
+  const bytesToHex = (b) => [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, "0")).join("");
+
+  // ---- live feed (WebSocket) ----
+  const status = $("status"), feed = $("feed");
+  function connect() {
+    const ws = new WebSocket(`ws://${location.host}/ws`);
+    ws.onopen = () => { status.textContent = "live"; status.className = "up"; };
+    ws.onclose = () => { status.textContent = "disconnected — retrying"; status.className = ""; setTimeout(connect, 1500); };
+    ws.onmessage = (e) => render(JSON.parse(e.data));
+  }
+  function render(ev) {
+    const now = new Date().toLocaleTimeString();
+    if (ev.kind === "odom" && ev.data) {
+      $("rover").textContent = ev.rover;
+      $("x").textContent = (+ev.data.x).toFixed(3);
+      $("y").textContent = (+ev.data.y).toFixed(3);
+      $("theta").textContent = (+ev.data.theta).toFixed(3);
+      $("updated").textContent = now;
+    }
+    const div = document.createElement("div");
+    div.className = "ev " + ev.kind;
+    div.innerHTML = `<span class="t">${now}</span> <span class="k">${ev.kind}</span> <code>${ev.rover}</code> ${ev.data ? JSON.stringify(ev.data) : ev.topic}`;
+    feed.prepend(div);
+    while (feed.children.length > 100) feed.removeChild(feed.lastChild);
+  }
+
+  // ---- command console (client-side Ed25519 signing) ----
+  async function postJSON(url, body) {
+    const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (!r.ok) throw new Error(`${url} -> ${r.status}: ${await r.text()}`);
+    return r.json();
+  }
+  async function importEd25519Private(hex) {
+    // Wrap the 32-byte raw seed in the fixed Ed25519 PKCS#8 prefix.
+    const pkcs8 = new Uint8Array(48);
+    pkcs8.set(hexToBytes("302e020100300506032b657004220420"), 0);
+    pkcs8.set(hexToBytes(hex), 16);
+    return crypto.subtle.importKey("pkcs8", pkcs8, { name: "Ed25519" }, false, ["sign"]);
+  }
+  async function sendCommand() {
+    const out = $("cmdout"); const btn = $("send");
+    out.textContent = ""; btn.disabled = true;
+    try {
+      if (!crypto?.subtle) throw new Error("Web Crypto unavailable (use a modern browser / https or localhost)");
+      const operator = $("operator").value.trim(), rover = $("cmdrover").value.trim();
+      const priv = $("priv").value.trim();
+      if (priv.length !== 64) throw new Error("private key must be 64 hex chars");
+      const n = await postJSON("/api/nonce", { rover, operator });
+      const envelope = {
+        protocol_version: { major: 0, minor: 1, patch: 0 },
+        rover_id: rover, sender_id: operator, msg_id: n.nonce, nonce: n.nonce,
+        issued_at: n.issued_at, expires_at: n.expires_at,
+        payload: { class: "motion", type: 1, linear_velocity: parseFloat($("v").value), angular_velocity: parseFloat($("w").value) },
+      };
+      const sb = await postJSON("/api/sign-bytes", { envelope });
+      const key = await importEd25519Private(priv);
+      const sig = bytesToHex(await crypto.subtle.sign({ name: "Ed25519" }, key, hexToBytes(sb.signing_hex)));
+      const res = await postJSON("/api/command", { envelope, signature: sig });
+      out.innerHTML = `<span style="color:#6fd38a">✓ signed in-browser &amp; dispatched — nonce ${res.nonce}</span>`;
+    } catch (e) {
+      out.innerHTML = `<span style="color:#f38b8b">✗ ${e.message}</span>`;
+    } finally { btn.disabled = false; }
+  }
+  $("send").addEventListener("click", sendCommand);
+  connect();
+</script>
+</body>
+</html>
