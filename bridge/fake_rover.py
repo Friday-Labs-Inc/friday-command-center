@@ -39,6 +39,21 @@ class FakeRover:
         self.client.loop_stop()
         self.client.disconnect()
 
+    def emit_fault(self, category, description=None, sender_id=None, fault_id=None):
+        """Publish a rover-initiated fault on tlm/fault (e.g. a watchdog safe-stop)."""
+        payload = {
+            "category": category, "description": description,
+            "sender_id": sender_id, "fault_id": fault_id,
+        }
+        self.client.publish(f"mark1/{self.rover_id}/tlm/fault", cbor2.dumps(payload), qos=1)
+
+    def emit_odom(self, x, y, theta):
+        """Publish odometry telemetry on tlm/odom."""
+        self.client.publish(
+            f"mark1/{self.rover_id}/tlm/odom",
+            cbor2.dumps({"x": x, "y": y, "theta": theta}), qos=1,
+        )
+
     def _on_message(self, client, userdata, msg):
         try:
             e = env.decode(msg.payload)

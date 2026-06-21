@@ -116,3 +116,58 @@ def record_command(
         }
     ).insert(ignore_permissions=True)
     return doc.name
+
+
+@frappe.whitelist()
+def record_security_event(
+    rover, category, severity="Warning", description=None, operator=None,
+    source_fault=None, event_time=None,
+):
+    """Ingest a security-relevant rover fault (or a rejected command) as a Security Event."""
+    doc = frappe.get_doc(
+        {
+            "doctype": "Security Event",
+            "rover": rover,
+            "operator": operator,
+            "category": category,
+            "severity": severity,
+            "description": description,
+            "source_fault": source_fault,
+            "event_time": event_time or now_datetime(),
+        }
+    ).insert(ignore_permissions=True)
+    return doc.name
+
+
+@frappe.whitelist()
+def update_rover_telemetry(
+    rover, last_seen=None, last_pose_x=None, last_pose_y=None, last_pose_theta=None,
+):
+    """Update a rover's last-known state from ingested odometry telemetry."""
+    updates = {"last_seen": last_seen or now_datetime()}
+    for field, value in (
+        ("last_pose_x", last_pose_x),
+        ("last_pose_y", last_pose_y),
+        ("last_pose_theta", last_pose_theta),
+    ):
+        if value is not None:
+            updates[field] = float(value)
+    frappe.db.set_value("Rover", rover, updates)
+    return True
+
+
+@frappe.whitelist()
+def security_event_count(rover, unacknowledged_only=0):
+    filters = {"rover": rover}
+    if int(unacknowledged_only or 0):
+        filters["acknowledged"] = 0
+    return frappe.db.count("Security Event", filters)
+
+
+@frappe.whitelist()
+def get_rover_state(rover):
+    return frappe.db.get_value(
+        "Rover", rover,
+        ["last_seen", "last_pose_x", "last_pose_y", "last_pose_theta", "status"],
+        as_dict=True,
+    )

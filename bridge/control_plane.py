@@ -38,3 +38,22 @@ class ControlPlane:
             nonce=nonce, outcome=outcome, category=category, msg_id=msg_id, payload=payload,
             issued_at=issued_at, expires_at=expires_at, signature=signature,
         )
+
+    def record_security_event(self, *, rover, category, severity="Warning",
+                              description=None, operator=None, source_fault=None) -> str:
+        return self._call(
+            "record_security_event", rover=rover, category=category, severity=severity,
+            description=description, operator=operator, source_fault=source_fault,
+        )
+
+    def update_rover_telemetry(self, rover, **fields):
+        return self._call("update_rover_telemetry", rover=rover, **fields)
+
+    def security_event_count(self, rover, unacknowledged_only=False) -> int:
+        return int(self._call(
+            "security_event_count", rover=rover,
+            unacknowledged_only=1 if unacknowledged_only else 0,
+        ))
+
+    def get_rover_state(self, rover) -> dict:
+        return self._call("get_rover_state", rover=rover)
