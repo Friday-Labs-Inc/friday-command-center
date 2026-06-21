@@ -59,3 +59,31 @@ def smoke():
             "category": "OK"}).insert(ignore_permissions=True)
     frappe.db.commit()
     print("counts:", {dt: frappe.db.count(dt) for dt in DOCTYPES})
+
+
+def provision_for_smoke(operator="OP-001"):
+    """Dev helper for the Phase B bridge smoke: mint an operator keypair (store the
+    public half on the Operator, print the private half) + Administrator API keys."""
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from frappe.core.doctype.user.user import generate_keys
+
+    priv = Ed25519PrivateKey.generate()
+    priv_hex = priv.private_bytes(
+        serialization.Encoding.Raw, serialization.PrivateFormat.Raw,
+        serialization.NoEncryption()).hex()
+    pub_hex = priv.public_key().public_bytes(
+        serialization.Encoding.Raw, serialization.PublicFormat.Raw).hex()
+
+    doc = frappe.get_doc("Operator", operator)
+    doc.ed25519_public_key = pub_hex
+    doc.save(ignore_permissions=True)
+
+    res = generate_keys("Administrator")
+    api_secret = res["api_secret"] if isinstance(res, dict) else res
+    api_key = frappe.db.get_value("User", "Administrator", "api_key")
+    frappe.db.commit()
+
+    print("SMOKE_OP_PRIV", priv_hex)
+    print("SMOKE_API_KEY", api_key)
+    print("SMOKE_API_SECRET", api_secret)

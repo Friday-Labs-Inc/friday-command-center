@@ -1,0 +1,5 @@
+# Friday Command Center — data-plane bridge runtime deps.
+paho-mqtt>=2.0
+cbor2>=5.6
+cryptography>=42
+requests>=2.31
