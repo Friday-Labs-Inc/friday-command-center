@@ -1,0 +1,104 @@
+{
+ "actions": [],
+ "creation": "2026-06-21 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "protocol_section",
+  "protocol_major",
+  "broker_section",
+  "broker_host",
+  "broker_port",
+  "policy_section",
+  "command_expiry_s",
+  "clock_skew_tolerance_s",
+  "column_break_policy",
+  "default_authority_lease_s"
+ ],
+ "fields": [
+  {
+   "fieldname": "protocol_section",
+   "fieldtype": "Section Break",
+   "label": "Protocol"
+  },
+  {
+   "fieldname": "protocol_major",
+   "fieldtype": "Int",
+   "label": "Protocol Major",
+   "default": "0",
+   "description": "friday_msgs contract major the fleet currently speaks."
+  },
+  {
+   "fieldname": "broker_section",
+   "fieldtype": "Section Break",
+   "label": "MQTT Broker"
+  },
+  {
+   "fieldname": "broker_host",
+   "fieldtype": "Data",
+   "label": "Broker Host",
+   "default": "127.0.0.1"
+  },
+  {
+   "fieldname": "broker_port",
+   "fieldtype": "Int",
+   "label": "Broker Port",
+   "default": "1883"
+  },
+  {
+   "fieldname": "policy_section",
+   "fieldtype": "Section Break",
+   "label": "Command Policy"
+  },
+  {
+   "fieldname": "command_expiry_s",
+   "fieldtype": "Int",
+   "label": "Command Expiry (s)",
+   "default": "30",
+   "description": "Default envelope validity window (expires_at - issued_at)."
+  },
+  {
+   "fieldname": "clock_skew_tolerance_s",
+   "fieldtype": "Int",
+   "label": "Clock Skew Tolerance (s)",
+   "default": "5"
+  },
+  {
+   "fieldname": "column_break_policy",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "default_authority_lease_s",
+   "fieldtype": "Float",
+   "label": "Default Authority Lease (s)",
+   "default": "2.0"
+  }
+ ],
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-06-21 00:00:00",
+ "modified_by": "Administrator",
+ "module": "Friday Command Center",
+ "name": "Command Center Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "role": "Fleet Admin",
+   "read": 1,
+   "write": 1
+  },
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "print": 1,
+   "share": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

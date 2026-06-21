@@ -1,0 +1,122 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "field:operator_id",
+ "creation": "2026-06-21 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "operator_id",
+  "operator_name",
+  "status",
+  "column_break_main",
+  "user",
+  "key_section",
+  "ed25519_public_key",
+  "key_fingerprint"
+ ],
+ "fields": [
+  {
+   "fieldname": "operator_id",
+   "fieldtype": "Data",
+   "label": "Operator ID",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "description": "Stable operator identifier, carried as sender_id in the signed command envelope."
+  },
+  {
+   "fieldname": "operator_name",
+   "fieldtype": "Data",
+   "label": "Name",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Active\nSuspended\nRevoked",
+   "default": "Active",
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "column_break_main",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "label": "Login User",
+   "options": "User",
+   "description": "Frappe User for Command Center login (OIDC/passkey). Separate from the signing key."
+  },
+  {
+   "fieldname": "key_section",
+   "fieldtype": "Section Break",
+   "label": "Command Signing Key"
+  },
+  {
+   "fieldname": "ed25519_public_key",
+   "fieldtype": "Data",
+   "label": "Ed25519 Public Key (hex)",
+   "reqd": 1,
+   "description": "32-byte Ed25519 public key as 64 hex chars. The private half never leaves the operator's device."
+  },
+  {
+   "fieldname": "key_fingerprint",
+   "fieldtype": "Data",
+   "label": "Key Fingerprint",
+   "read_only": 1,
+   "description": "SHA-256 of the public key, first 16 hex chars — a human-checkable key id."
+  }
+ ],
+ "links": [],
+ "modified": "2026-06-21 00:00:00",
+ "modified_by": "Administrator",
+ "module": "Friday Command Center",
+ "name": "Operator",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "role": "Fleet Admin",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "report": 1,
+   "export": 1,
+   "share": 1,
+   "print": 1,
+   "email": 1
+  },
+  {
+   "role": "Fleet Operator",
+   "read": 1,
+   "report": 1
+  },
+  {
+   "role": "Auditor",
+   "read": 1,
+   "report": 1
+  },
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "report": 1,
+   "export": 1,
+   "share": 1,
+   "print": 1,
+   "email": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

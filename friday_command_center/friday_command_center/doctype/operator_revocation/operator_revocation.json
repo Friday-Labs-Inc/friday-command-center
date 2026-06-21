@@ -1,0 +1,141 @@
+{
+ "actions": [],
+ "autoname": "REV-.YYYY.-.#####",
+ "creation": "2026-06-21 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "operator",
+  "scope",
+  "rover",
+  "status",
+  "column_break_head",
+  "epoch",
+  "revoked_on",
+  "revoked_by",
+  "reason_section",
+  "reason",
+  "acks_section",
+  "applied_acks"
+ ],
+ "fields": [
+  {
+   "fieldname": "operator",
+   "fieldtype": "Link",
+   "label": "Operator",
+   "options": "Operator",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "scope",
+   "fieldtype": "Select",
+   "label": "Scope",
+   "options": "All Rovers\nSpecific Rover",
+   "default": "All Rovers",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "rover",
+   "fieldtype": "Link",
+   "label": "Rover",
+   "options": "Rover",
+   "depends_on": "eval:doc.scope=='Specific Rover'",
+   "mandatory_depends_on": "eval:doc.scope=='Specific Rover'"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Active\nLifted",
+   "default": "Active",
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "column_break_head",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "epoch",
+   "fieldtype": "Int",
+   "label": "Revocation Epoch",
+   "description": "Bumped on the affected allowlist; a reconnecting rover must ACK at least this epoch."
+  },
+  {
+   "fieldname": "revoked_on",
+   "fieldtype": "Datetime",
+   "label": "Revoked On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "revoked_by",
+   "fieldtype": "Link",
+   "label": "Revoked By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "reason_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "reason",
+   "fieldtype": "Small Text",
+   "label": "Reason"
+  },
+  {
+   "fieldname": "acks_section",
+   "fieldtype": "Section Break",
+   "label": "Applied By Rovers"
+  },
+  {
+   "fieldname": "applied_acks",
+   "fieldtype": "Table",
+   "label": "Rover Acks",
+   "options": "Rover Revocation Ack"
+  }
+ ],
+ "links": [],
+ "modified": "2026-06-21 00:00:00",
+ "modified_by": "Administrator",
+ "module": "Friday Command Center",
+ "name": "Operator Revocation",
+ "naming_rule": "Expression (old style)",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "role": "Fleet Admin",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "report": 1,
+   "export": 1,
+   "share": 1,
+   "print": 1,
+   "email": 1
+  },
+  {
+   "role": "Auditor",
+   "read": 1,
+   "report": 1,
+   "export": 1
+  },
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "report": 1,
+   "export": 1,
+   "share": 1
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

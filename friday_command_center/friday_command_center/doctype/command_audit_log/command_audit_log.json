@@ -1,0 +1,158 @@
+{
+ "actions": [],
+ "autoname": "CMD-.YYYY.-.#####",
+ "creation": "2026-06-21 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "rover",
+  "operator",
+  "command_class",
+  "column_break_head",
+  "outcome",
+  "category",
+  "ids_section",
+  "msg_id",
+  "nonce",
+  "column_break_ids",
+  "issued_at",
+  "expires_at",
+  "received_at",
+  "payload_section",
+  "payload",
+  "signature"
+ ],
+ "fields": [
+  {
+   "fieldname": "rover",
+   "fieldtype": "Link",
+   "label": "Rover",
+   "options": "Rover",
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "operator",
+   "fieldtype": "Link",
+   "label": "Operator",
+   "options": "Operator",
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "command_class",
+   "fieldtype": "Select",
+   "label": "Command Class",
+   "options": "motion\nmission\nestop\nrecovery",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "column_break_head",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "outcome",
+   "fieldtype": "Select",
+   "label": "Outcome",
+   "options": "Accepted\nRejected",
+   "default": "Accepted",
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "category",
+   "fieldtype": "Select",
+   "label": "Category",
+   "options": "OK\nPROTOCOL_MISMATCH\nROVER_MISMATCH\nUNKNOWN_SENDER\nSECURITY_AUTH\nEXPIRED\nSECURITY_REPLAY",
+   "default": "OK",
+   "in_standard_filter": 1,
+   "description": "Mirrors the rover Telemetry agent's protocol.py validation categories."
+  },
+  {
+   "fieldname": "ids_section",
+   "fieldtype": "Section Break",
+   "label": "Envelope"
+  },
+  {
+   "fieldname": "msg_id",
+   "fieldtype": "Int",
+   "label": "Message ID"
+  },
+  {
+   "fieldname": "nonce",
+   "fieldtype": "Int",
+   "label": "Nonce"
+  },
+  {
+   "fieldname": "column_break_ids",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "issued_at",
+   "fieldtype": "Datetime",
+   "label": "Issued At"
+  },
+  {
+   "fieldname": "expires_at",
+   "fieldtype": "Datetime",
+   "label": "Expires At"
+  },
+  {
+   "fieldname": "received_at",
+   "fieldtype": "Datetime",
+   "label": "Received At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "payload_section",
+   "fieldtype": "Section Break",
+   "label": "Payload & Signature"
+  },
+  {
+   "fieldname": "payload",
+   "fieldtype": "Code",
+   "label": "Payload (JSON)",
+   "options": "JSON"
+  },
+  {
+   "fieldname": "signature",
+   "fieldtype": "Small Text",
+   "label": "Ed25519 Signature (hex)"
+  }
+ ],
+ "links": [],
+ "modified": "2026-06-21 00:00:00",
+ "modified_by": "Administrator",
+ "module": "Friday Command Center",
+ "name": "Command Audit Log",
+ "naming_rule": "Expression (old style)",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "role": "Fleet Admin",
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "share": 1,
+   "email": 1
+  },
+  {
+   "role": "Auditor",
+   "read": 1,
+   "report": 1,
+   "export": 1
+  },
+  {
+   "role": "System Manager",
+   "read": 1,
+   "create": 1,
+   "report": 1,
+   "export": 1
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 0
+}

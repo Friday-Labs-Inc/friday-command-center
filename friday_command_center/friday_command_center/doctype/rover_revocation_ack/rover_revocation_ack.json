@@ -1,0 +1,39 @@
+{
+ "actions": [],
+ "creation": "2026-06-21 00:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "rover",
+  "acked_on"
+ ],
+ "fields": [
+  {
+   "fieldname": "rover",
+   "fieldtype": "Link",
+   "label": "Rover",
+   "options": "Rover",
+   "in_list_view": 1,
+   "columns": 6
+  },
+  {
+   "fieldname": "acked_on",
+   "fieldtype": "Datetime",
+   "label": "Acked On",
+   "in_list_view": 1,
+   "columns": 4
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-06-21 00:00:00",
+ "modified_by": "Administrator",
+ "module": "Friday Command Center",
+ "name": "Rover Revocation Ack",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
