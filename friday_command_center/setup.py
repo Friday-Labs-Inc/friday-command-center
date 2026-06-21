@@ -99,3 +99,43 @@ def provision_for_smoke(operator="OP-001"):
     print("SMOKE_ROVER_PRIV", rpriv_hex)
     print("SMOKE_API_KEY", api_key)
     print("SMOKE_API_SECRET", api_secret)
+
+
+def ensure_mission_workflow():
+    """Create the 'Mission Approval' Frappe Workflow over the Mission.status field (idempotent)."""
+    states = [
+        ("Draft", "0", "Fleet Operator"),
+        ("Pending Approval", "0", "Mission Approver"),
+        ("Approved", "0", "Mission Approver"),
+        ("Active", "0", "Fleet Admin"),
+        ("Complete", "0", "Fleet Admin"),
+        ("Aborted", "0", "Fleet Admin"),
+    ]
+    transitions = [
+        ("Draft", "Submit for Approval", "Pending Approval", "Fleet Operator"),
+        ("Pending Approval", "Approve", "Approved", "Mission Approver"),
+        ("Pending Approval", "Reject", "Draft", "Mission Approver"),
+        ("Approved", "Activate", "Active", "Fleet Admin"),
+        ("Active", "Complete", "Complete", "Fleet Admin"),
+        ("Active", "Abort", "Aborted", "Fleet Admin"),
+    ]
+    for state, _, _ in states:
+        if not frappe.db.exists("Workflow State", state):
+            frappe.get_doc(
+                {"doctype": "Workflow State", "workflow_state_name": state}
+            ).insert(ignore_permissions=True)
+    for _, action, _, _ in transitions:
+        if not frappe.db.exists("Workflow Action Master", action):
+            frappe.get_doc(
+                {"doctype": "Workflow Action Master", "workflow_action_name": action}
+            ).insert(ignore_permissions=True)
+    if not frappe.db.exists("Workflow", "Mission Approval"):
+        frappe.get_doc({
+            "doctype": "Workflow", "workflow_name": "Mission Approval", "document_type": "Mission",
+            "workflow_state_field": "status", "is_active": 1, "send_email_alert": 0,
+            "states": [{"state": s, "doc_status": ds, "allow_edit": role} for s, ds, role in states],
+            "transitions": [{"state": st, "action": ac, "next_state": ns, "allowed": role,
+                             "allow_self_approval": 1} for st, ac, ns, role in transitions],
+        }).insert(ignore_permissions=True)
+    frappe.db.commit()
+    print("Mission Approval workflow ensured")

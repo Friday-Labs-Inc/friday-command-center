@@ -233,3 +233,22 @@ def active_rover_certificates(rover=None):
         "Rover Certificate", filters=filters,
         fields=["name", "rover", "common_name", "serial", "fingerprint", "issued_on", "expires_on"],
     )
+
+
+# ---- missions (Phase D) ----
+@frappe.whitelist()
+def upload_mission(title, rover=None, waypoints=None, payload=None):
+    """Create a Mission (Draft) with ordered waypoints. Approval runs via the
+    'Mission Approval' Frappe Workflow over the status field."""
+    import json as _json
+
+    wps = _json.loads(waypoints) if isinstance(waypoints, str) else (waypoints or [])
+    doc = frappe.get_doc({
+        "doctype": "Mission", "title": title, "rover": rover, "status": "Draft",
+        "mission_payload": payload,
+        "waypoints": [
+            {"seq": i + 1, "x": w.get("x"), "y": w.get("y"), "action": w.get("action")}
+            for i, w in enumerate(wps)
+        ],
+    }).insert(ignore_permissions=True)
+    return doc.name
