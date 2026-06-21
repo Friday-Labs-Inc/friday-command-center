@@ -198,3 +198,38 @@ def rover_keys():
     """Map of rover -> telemetry signing public key, for the gateway to verify against."""
     rows = frappe.get_all("Rover", fields=["name", "signing_public_key"])
     return {r.name: r.signing_public_key for r in rows if r.signing_public_key}
+
+
+# ---- PKI: rover mTLS certificate lifecycle (Phase D) ----
+@frappe.whitelist()
+def issue_rover_certificate(rover, cert_pem=None, serial=None, fingerprint=None,
+                            expires_on=None, issuing_ca=None):
+    """Record an issued rover mTLS certificate (and stamp the rover's fingerprint)."""
+    doc = frappe.get_doc({
+        "doctype": "Rover Certificate", "rover": rover, "common_name": rover,
+        "status": "Active", "cert_pem": cert_pem, "serial": serial,
+        "fingerprint": fingerprint, "expires_on": expires_on, "issuing_ca": issuing_ca,
+    }).insert(ignore_permissions=True)
+    if fingerprint:
+        frappe.db.set_value("Rover", rover, "tls_cert_fingerprint", fingerprint)
+    return doc.name
+
+
+@frappe.whitelist()
+def revoke_rover_certificate(name, reason=None):
+    doc = frappe.get_doc("Rover Certificate", name)
+    doc.status = "Revoked"
+    doc.revoked_reason = reason
+    doc.save(ignore_permissions=True)
+    return {"name": name, "status": doc.status}
+
+
+@frappe.whitelist()
+def active_rover_certificates(rover=None):
+    filters = {"status": "Active"}
+    if rover:
+        filters["rover"] = rover
+    return frappe.get_all(
+        "Rover Certificate", filters=filters,
+        fields=["name", "rover", "common_name", "serial", "fingerprint", "issued_on", "expires_on"],
+    )

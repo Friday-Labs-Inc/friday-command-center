@@ -1,0 +1,48 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "field:ca_name",
+ "creation": "2026-06-21 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "ca_name",
+  "common_name",
+  "ca_type",
+  "status",
+  "column_break_main",
+  "fingerprint",
+  "created_on",
+  "cert_section",
+  "cert_pem",
+  "notes"
+ ],
+ "fields": [
+  {"fieldname": "ca_name", "fieldtype": "Data", "label": "CA Name", "reqd": 1, "unique": 1, "in_list_view": 1},
+  {"fieldname": "common_name", "fieldtype": "Data", "label": "Common Name", "in_list_view": 1},
+  {"fieldname": "ca_type", "fieldtype": "Select", "label": "Type", "options": "Root\nIntermediate", "default": "Root", "in_list_view": 1},
+  {"fieldname": "status", "fieldtype": "Select", "label": "Status", "options": "Active\nRetired", "default": "Active", "in_list_view": 1, "in_standard_filter": 1},
+  {"fieldname": "column_break_main", "fieldtype": "Column Break"},
+  {"fieldname": "fingerprint", "fieldtype": "Data", "label": "Fingerprint (SHA-256)"},
+  {"fieldname": "created_on", "fieldtype": "Datetime", "label": "Created On", "read_only": 1},
+  {"fieldname": "cert_section", "fieldtype": "Section Break", "label": "Certificate (public)"},
+  {"fieldname": "cert_pem", "fieldtype": "Code", "label": "CA Cert (PEM)", "description": "Public CA certificate. The CA private key is NOT stored here (offline / HSM)."},
+  {"fieldname": "notes", "fieldtype": "Small Text", "label": "Notes"}
+ ],
+ "links": [],
+ "modified": "2026-06-21 00:00:00",
+ "modified_by": "Administrator",
+ "module": "Friday Command Center",
+ "name": "Certificate Authority",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {"role": "Fleet Admin", "read": 1, "write": 1, "create": 1, "delete": 1, "report": 1, "export": 1, "share": 1, "print": 1},
+  {"role": "Auditor", "read": 1, "report": 1, "export": 1},
+  {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1, "report": 1, "export": 1, "share": 1, "print": 1}
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
