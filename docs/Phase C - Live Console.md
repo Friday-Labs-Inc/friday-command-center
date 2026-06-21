@@ -81,8 +81,12 @@ CP_BASE=http://127.0.0.1:8003 CP_KEY=... CP_SECRET=... \
 
 - **Frappe reads in the console** — Security Events, audit log, rover list from the
   control-plane REST (the console shows live MQTT only).
-- **Client-side signing agent** — hardware-token / OS-keystore signer (replaces the
-  pasted dev key).
+- ~~Client-side signing agent~~ — ✅ **done**: `bridge/signing_agent.py` holds the operator
+  key in the **OS keychain** (macOS Keychain via the `security` CLI). The console enrolls a
+  key once and then signs via the agent (`POST /sign`), so the key never enters the browser.
+  Run: `uvicorn signing_agent:app --port 7070`. Verified by `verify_agent.py`. Remaining
+  production hardening: a hardware token (PKCS#11/PIV, non-extractable) + caller
+  authentication (CORS alone doesn't stop another local page triggering a signature).
 - **Real SPA** — React/Vue + MapLibre map; the no-build page proves the pipeline.
 - **CQRS split + rover-telemetry signature verification.**
 
