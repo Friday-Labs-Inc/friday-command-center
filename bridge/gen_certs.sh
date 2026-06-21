@@ -20,7 +20,7 @@ openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial \
   -out server.crt -days 3650 -sha256 -extfile server.ext 2>/dev/null
 
 # --- client certs (CN = identity) ---
-for pair in "bridge:fcc-bridge" "rover:MARK1-001" "gateway:fcc-gateway"; do
+for pair in "bridge:fcc-bridge" "rover:MARK1-001" "gateway:fcc-gateway" "dispatch:fcc-dispatch"; do
   name="${pair%%:*}"; cn="${pair##*:}"
   openssl genrsa -out "$name.key" 2048 2>/dev/null
   openssl req -new -key "$name.key" -subj "/CN=$cn" -out "$name.csr" 2>/dev/null

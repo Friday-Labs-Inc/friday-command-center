@@ -9,6 +9,10 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
+      // CQRS: writes go to the command dispatcher (:8091), reads + WS to the gateway (:8090).
+      '/api/nonce': 'http://127.0.0.1:8091',
+      '/api/sign-bytes': 'http://127.0.0.1:8091',
+      '/api/command': 'http://127.0.0.1:8091',
       '/api': 'http://127.0.0.1:8090',
       '/ws': { target: 'ws://127.0.0.1:8090', ws: true },
     },
