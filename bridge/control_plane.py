@@ -57,3 +57,9 @@ class ControlPlane:
 
     def get_rover_state(self, rover) -> dict:
         return self._call("get_rover_state", rover=rover)
+
+    def recent_security_events(self, rover=None, limit=20):
+        return self._call("recent_security_events", rover=rover, limit=limit)
+
+    def list_rovers(self):
+        return self._call("list_rovers")

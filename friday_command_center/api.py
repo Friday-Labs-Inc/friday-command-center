@@ -171,3 +171,23 @@ def get_rover_state(rover):
         ["last_seen", "last_pose_x", "last_pose_y", "last_pose_theta", "status"],
         as_dict=True,
     )
+
+
+@frappe.whitelist()
+def recent_security_events(rover=None, limit=20):
+    filters = {"rover": rover} if rover else {}
+    return frappe.get_all(
+        "Security Event", filters=filters,
+        fields=["name", "rover", "operator", "category", "severity", "description",
+                "event_time", "acknowledged"],
+        order_by="creation desc", limit=int(limit),
+    )
+
+
+@frappe.whitelist()
+def list_rovers():
+    return frappe.get_all(
+        "Rover", fields=["name", "rover_name", "status", "last_seen",
+                         "last_pose_x", "last_pose_y", "last_pose_theta"],
+        order_by="name",
+    )

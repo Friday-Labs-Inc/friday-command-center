@@ -174,6 +174,24 @@ async def api_command(req: CommandReq):
     return {"ok": True, "nonce": envelope["nonce"]}
 
 
+@app.get("/api/rovers")
+async def api_rovers():
+    cp = _require_cp()
+    return await asyncio.to_thread(cp.list_rovers)
+
+
+@app.get("/api/rover-state")
+async def api_rover_state(rover: str):
+    cp = _require_cp()
+    return await asyncio.to_thread(cp.get_rover_state, rover)
+
+
+@app.get("/api/security-events")
+async def api_security_events(rover: str | None = None, limit: int = 20):
+    cp = _require_cp()
+    return await asyncio.to_thread(cp.recent_security_events, rover, limit)
+
+
 # ---- read path --------------------------------------------------------------
 @app.get("/", response_class=HTMLResponse)
 async def index():
