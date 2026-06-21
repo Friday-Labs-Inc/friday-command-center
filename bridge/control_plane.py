@@ -63,3 +63,6 @@ class ControlPlane:
 
     def list_rovers(self):
         return self._call("list_rovers")
+
+    def rover_keys(self):
+        return self._call("rover_keys")

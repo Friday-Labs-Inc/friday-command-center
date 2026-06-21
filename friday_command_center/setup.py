@@ -79,11 +79,23 @@ def provision_for_smoke(operator="OP-001"):
     doc.ed25519_public_key = pub_hex
     doc.save(ignore_permissions=True)
 
+    # mint a rover telemetry-signing key too (public half on the Rover)
+    rpriv = Ed25519PrivateKey.generate()
+    rpriv_hex = rpriv.private_bytes(
+        serialization.Encoding.Raw, serialization.PrivateFormat.Raw,
+        serialization.NoEncryption()).hex()
+    rpub_hex = rpriv.public_key().public_bytes(
+        serialization.Encoding.Raw, serialization.PublicFormat.Raw).hex()
+    rover = frappe.get_doc("Rover", "MARK1-001")
+    rover.signing_public_key = rpub_hex
+    rover.save(ignore_permissions=True)
+
     res = generate_keys("Administrator")
     api_secret = res["api_secret"] if isinstance(res, dict) else res
     api_key = frappe.db.get_value("User", "Administrator", "api_key")
     frappe.db.commit()
 
     print("SMOKE_OP_PRIV", priv_hex)
+    print("SMOKE_ROVER_PRIV", rpriv_hex)
     print("SMOKE_API_KEY", api_key)
     print("SMOKE_API_SECRET", api_secret)

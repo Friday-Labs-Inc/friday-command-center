@@ -95,3 +95,25 @@ def generate_keypair() -> tuple[str, str]:
         serialization.Encoding.Raw, serialization.PublicFormat.Raw
     ).hex()
     return priv_hex, pub_hex
+
+
+# ---- rover telemetry signing (rover signs; the gateway verifies) ----
+def sign_telemetry(rover_id: str, kind: str, data, private_key: Ed25519PrivateKey) -> dict:
+    """Build a signed telemetry message {rover_id, kind, data, sig}. The signature
+    covers the canonical CBOR of the message minus `sig` — same rule as commands."""
+    msg = {"rover_id": rover_id, "kind": kind, "data": data}
+    msg["sig"] = private_key.sign(_signing_bytes_tlm(msg))
+    return msg
+
+
+def verify_telemetry(msg: dict, public_key: Ed25519PublicKey) -> bool:
+    try:
+        public_key.verify(msg["sig"], _signing_bytes_tlm(msg))
+        return True
+    except (InvalidSignature, KeyError, TypeError):
+        return False
+
+
+def _signing_bytes_tlm(msg: dict) -> bytes:
+    unsigned = {k: v for k, v in msg.items() if k != "sig"}
+    return cbor2.dumps(unsigned, canonical=True)

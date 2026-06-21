@@ -191,3 +191,10 @@ def list_rovers():
                          "last_pose_x", "last_pose_y", "last_pose_theta"],
         order_by="name",
     )
+
+
+@frappe.whitelist()
+def rover_keys():
+    """Map of rover -> telemetry signing public key, for the gateway to verify against."""
+    rows = frappe.get_all("Rover", fields=["name", "signing_public_key"])
+    return {r.name: r.signing_public_key for r in rows if r.signing_public_key}

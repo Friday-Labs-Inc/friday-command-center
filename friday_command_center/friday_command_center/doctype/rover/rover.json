@@ -14,6 +14,7 @@
   "protocol_major",
   "firmware_version",
   "tls_cert_fingerprint",
+  "signing_public_key",
   "owner_org",
   "telemetry_section",
   "last_seen",
@@ -75,6 +76,12 @@
    "fieldtype": "Data",
    "label": "TLS Cert Fingerprint",
    "description": "SHA-256 fingerprint of the rover's mTLS client certificate."
+  },
+  {
+   "fieldname": "signing_public_key",
+   "fieldtype": "Data",
+   "label": "Telemetry Signing Public Key (hex)",
+   "description": "Ed25519 public key the rover signs its telemetry with; the gateway verifies against it."
   },
   {
    "fieldname": "owner_org",

@@ -19,10 +19,11 @@ import envelope as env
 
 class FakeRover:
     def __init__(self, rover_id, operator_keys: dict, host="127.0.0.1", port=1883,
-                 client_id=None, tls=None):
+                 client_id=None, tls=None, signing_key_hex=None):
         # operator_keys: {operator_id: public_key_hex}
         self.rover_id = rover_id
         self.keys = {op: env.public_key_from_hex(k) for op, k in operator_keys.items()}
+        self._signing_key = env.private_key_from_hex(signing_key_hex) if signing_key_hex else None
         self.last_nonce: dict[str, int] = {}
         self.received: list[tuple[dict, str]] = []
         self.host, self.port = host, port
@@ -45,18 +46,19 @@ class FakeRover:
 
     def emit_fault(self, category, description=None, sender_id=None, fault_id=None):
         """Publish a rover-initiated fault on tlm/fault (e.g. a watchdog safe-stop)."""
-        payload = {
+        self._publish_tlm("fault", {
             "category": category, "description": description,
             "sender_id": sender_id, "fault_id": fault_id,
-        }
-        self.client.publish(f"mark1/{self.rover_id}/tlm/fault", cbor2.dumps(payload), qos=1)
+        })
 
     def emit_odom(self, x, y, theta):
         """Publish odometry telemetry on tlm/odom."""
-        self.client.publish(
-            f"mark1/{self.rover_id}/tlm/odom",
-            cbor2.dumps({"x": x, "y": y, "theta": theta}), qos=1,
-        )
+        self._publish_tlm("odom", {"x": x, "y": y, "theta": theta})
+
+    def _publish_tlm(self, kind, data):
+        # Sign the telemetry if a signing key is configured; else publish raw (legacy).
+        msg = env.sign_telemetry(self.rover_id, kind, data, self._signing_key) if self._signing_key else data
+        self.client.publish(f"mark1/{self.rover_id}/tlm/{kind}", cbor2.dumps(msg), qos=1)
 
     def _on_message(self, client, userdata, msg):
         try:

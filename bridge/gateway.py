@@ -57,16 +57,42 @@ class Hub:
 hub = Hub()
 
 
-def _event(topic: str, payload: bytes) -> dict:
+_rover_keys: dict = {}  # rover_id -> Ed25519PublicKey (telemetry signing)
+
+
+async def _refresh_rover_keys():
+    if _CP is None:
+        return
+    try:
+        keys = await asyncio.to_thread(_CP.rover_keys)
+        _rover_keys.clear()
+        for rover, pub_hex in keys.items():
+            if pub_hex:
+                _rover_keys[rover] = env.public_key_from_hex(pub_hex)
+    except Exception as exc:  # noqa: BLE001
+        print("rover-key refresh failed:", exc)
+
+
+def _event(topic: str, payload: bytes):
     parts = topic.split("/")
     rover = parts[1] if len(parts) > 1 else "?"
     try:
-        data = env.decode(payload)
+        msg = env.decode(payload)
     except Exception:  # noqa: BLE001
-        data = None
+        return {"kind": "telemetry", "rover": rover, "topic": topic, "data": None, "verified": None}
+    # Signed telemetry {rover_id, kind, data, sig} — verify against the rover's key; drop if bad.
+    if isinstance(msg, dict) and "sig" in msg and "kind" in msg:
+        pub = _rover_keys.get(rover)
+        if not (pub and env.verify_telemetry(msg, pub)):
+            print(f"DROP unverifiable telemetry from {rover} on {topic}")
+            return None
+        return {"kind": msg.get("kind"), "rover": rover, "topic": topic,
+                "data": msg.get("data"), "verified": True}
+    # Unsigned: acks pass through; an unsigned tlm message is flagged unverified.
     kind = ("odom" if "/tlm/odom" in topic else "fault" if "/tlm/fault" in topic
             else "ack" if "/ack/" in topic else "telemetry")
-    return {"kind": kind, "rover": rover, "topic": topic, "data": data}
+    return {"kind": kind, "rover": rover, "topic": topic, "data": msg,
+            "verified": (False if "/tlm/" in topic else None)}
 
 
 async def _mqtt_loop():
@@ -74,13 +100,16 @@ async def _mqtt_loop():
         ca_certs=f"{CERTS}/ca.crt", certfile=f"{CERTS}/gateway.crt", keyfile=f"{CERTS}/gateway.key")
     while True:
         try:
+            await _refresh_rover_keys()
             async with aiomqtt.Client(
                 hostname=BROKER_HOST, port=BROKER_PORT, identifier="fcc-gateway", tls_params=tls,
             ) as client:
                 await client.subscribe("mark1/+/tlm/#")
                 await client.subscribe("mark1/+/ack/#")
                 async for message in client.messages:
-                    await hub.broadcast(_event(str(message.topic), message.payload))
+                    ev = _event(str(message.topic), message.payload)
+                    if ev is not None:
+                        await hub.broadcast(ev)
         except Exception as exc:  # noqa: BLE001
             print("gateway mqtt loop error, retrying:", exc)
             await asyncio.sleep(2)
