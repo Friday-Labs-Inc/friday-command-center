@@ -27,7 +27,8 @@ from pydantic import BaseModel
 
 SERVICE = "friday-cc-signer"
 CONSOLE_ORIGINS = os.environ.get(
-    "CONSOLE_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"
+    "CONSOLE_ORIGINS",
+    "http://localhost:5173,http://127.0.0.1:5173,https://localhost:8443,https://127.0.0.1:8443",
 ).split(",")
 
 app = FastAPI(title="Friday CC — local signing agent")

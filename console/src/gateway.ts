@@ -56,7 +56,8 @@ function handle(ev: any) {
 }
 
 function connect() {
-  const ws = new WebSocket(`ws://${location.host}/ws`)
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws'
+  const ws = new WebSocket(`${proto}://${location.host}/ws`)
   ws.onopen = () => { state.connected = true }
   ws.onclose = () => { state.connected = false; setTimeout(connect, 1500) }
   ws.onmessage = (e) => handle(JSON.parse(e.data))

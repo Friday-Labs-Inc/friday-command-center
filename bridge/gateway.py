@@ -1,11 +1,15 @@
-"""Live-console gateway (CQRS read side) — FastAPI + aiomqtt, subscribe-only.
+"""Live-console gateway (CQRS read side + production edge) — FastAPI + aiomqtt.
 
-Subscribes the broker's telemetry/ack topics over mTLS (clientid/CN = fcc-gateway, the
-ACL permits subscribe only) and fans each message out to browser WebSocket clients. Also
-serves the read REST the console polls (rovers, rover-state, security-events). It NEVER
-publishes — operator commands go to the command dispatcher (dispatcher.py, fcc-dispatch).
+READ: subscribes telemetry/ack over mTLS (fcc-gateway, subscribe-only), verifies rover
+telemetry signatures, fans out over WebSocket, serves the read REST.
 
-Run: CP_BASE=... CP_KEY=... CP_SECRET=... PYTHONPATH=. .venv/bin/uvicorn gateway:app --port 8090
+PRODUCTION EDGE: serves the built SPA (console/dist) as a single TLS origin and
+reverse-proxies the WRITE paths (/api/nonce, /api/sign-bytes, /api/command) to the
+command dispatcher (dispatcher.py). The gateway holds NO broker publish rights — only the
+dispatcher publishes — so CQRS at the broker layer is preserved; this is an edge proxy.
+
+Run (dev):  CP_BASE=... CP_KEY=... CP_SECRET=... uvicorn gateway:app --port 8090
+Run (prod): ... uvicorn gateway:app --port 8443 --ssl-certfile certs/server.crt --ssl-keyfile certs/server.key
 """
 
 from __future__ import annotations
@@ -15,7 +19,8 @@ import os
 from contextlib import asynccontextmanager
 
 import aiomqtt
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+import httpx
+from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -24,8 +29,10 @@ from control_plane import ControlPlane
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CERTS = os.path.join(HERE, "certs")
+DIST = os.path.abspath(os.path.join(HERE, "..", "console", "dist"))
 BROKER_HOST = os.environ.get("MQTT_HOST", "127.0.0.1")
 BROKER_PORT = int(os.environ.get("MQTT_TLS_PORT", "8883"))
+DISPATCHER = os.environ.get("DISPATCHER_URL", "http://127.0.0.1:8091")
 
 _CP = None
 if os.environ.get("CP_BASE") and os.environ.get("CP_KEY") and os.environ.get("CP_SECRET"):
@@ -55,8 +62,6 @@ class Hub:
 
 
 hub = Hub()
-
-
 _rover_keys: dict = {}  # rover_id -> Ed25519PublicKey (telemetry signing)
 
 
@@ -80,7 +85,6 @@ def _event(topic: str, payload: bytes):
         msg = env.decode(payload)
     except Exception:  # noqa: BLE001
         return {"kind": "telemetry", "rover": rover, "topic": topic, "data": None, "verified": None}
-    # Signed telemetry {rover_id, kind, data, sig} — verify against the rover's key; drop if bad.
     if isinstance(msg, dict) and "sig" in msg and "kind" in msg:
         pub = _rover_keys.get(rover)
         if not (pub and env.verify_telemetry(msg, pub)):
@@ -88,7 +92,6 @@ def _event(topic: str, payload: bytes):
             return None
         return {"kind": msg.get("kind"), "rover": rover, "topic": topic,
                 "data": msg.get("data"), "verified": True}
-    # Unsigned: acks pass through; an unsigned tlm message is flagged unverified.
     kind = ("odom" if "/tlm/odom" in topic else "fault" if "/tlm/fault" in topic
             else "ack" if "/ack/" in topic else "telemetry")
     return {"kind": kind, "rover": rover, "topic": topic, "data": msg,
@@ -122,8 +125,7 @@ async def lifespan(app: FastAPI):
     task.cancel()
 
 
-app = FastAPI(title="Friday Command Center — Live Console (read)", lifespan=lifespan)
-app.mount("/static", StaticFiles(directory=os.path.join(HERE, "static")), name="static")
+app = FastAPI(title="Friday Command Center — gateway", lifespan=lifespan)
 
 
 def _require_cp():
@@ -132,6 +134,7 @@ def _require_cp():
     return _CP
 
 
+# ---- read REST --------------------------------------------------------------
 @app.get("/api/rovers")
 async def api_rovers():
     cp = _require_cp()
@@ -150,9 +153,29 @@ async def api_security_events(rover: str | None = None, limit: int = 20):
     return await asyncio.to_thread(cp.recent_security_events, rover, limit)
 
 
-@app.get("/", response_class=HTMLResponse)
-async def index():
-    return open(os.path.join(HERE, "static", "index.html")).read()
+# ---- write edge: reverse-proxy to the dispatcher (gateway never publishes) ----
+async def _proxy(req: Request, path: str) -> Response:
+    body = await req.body()
+    async with httpx.AsyncClient(timeout=15) as client:
+        r = await client.post(
+            f"{DISPATCHER}{path}", content=body,
+            headers={"content-type": req.headers.get("content-type", "application/json")})
+    return Response(content=r.content, status_code=r.status_code, media_type="application/json")
+
+
+@app.post("/api/nonce")
+async def proxy_nonce(req: Request):
+    return await _proxy(req, "/api/nonce")
+
+
+@app.post("/api/sign-bytes")
+async def proxy_sign_bytes(req: Request):
+    return await _proxy(req, "/api/sign-bytes")
+
+
+@app.post("/api/command")
+async def proxy_command(req: Request):
+    return await _proxy(req, "/api/command")
 
 
 @app.websocket("/ws")
@@ -163,3 +186,14 @@ async def ws(websocket: WebSocket):
             await websocket.receive_text()
     except WebSocketDisconnect:
         hub.leave(websocket)
+
+
+# ---- SPA serving (mounted LAST so it never shadows the routes above) ----
+if os.path.isfile(os.path.join(DIST, "index.html")):
+    app.mount("/", StaticFiles(directory=DIST, html=True), name="spa")
+else:
+    app.mount("/static", StaticFiles(directory=os.path.join(HERE, "static")), name="static")
+
+    @app.get("/", response_class=HTMLResponse)
+    async def index():
+        return open(os.path.join(HERE, "static", "index.html")).read()
