@@ -41,11 +41,14 @@ def _rover_from_topic(topic: str) -> str | None:
 
 
 class CommandCenterBridge:
-    def __init__(self, control_plane, host="127.0.0.1", port=1883, client_id="fcc-bridge"):
+    def __init__(self, control_plane, host="127.0.0.1", port=1883,
+                 client_id="fcc-bridge", tls=None):
         self.cp = control_plane
         self.host = host
         self.port = port
         self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=client_id)
+        if tls:
+            self.client.tls_set(ca_certs=tls["ca"], certfile=tls["cert"], keyfile=tls["key"])
         self.client.on_message = self._on_message
         self.acks: list[tuple[str, dict]] = []
         self.security_events: list[tuple[str, str, str]] = []

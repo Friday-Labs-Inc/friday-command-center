@@ -119,7 +119,27 @@ CP_BASE=http://127.0.0.1:8003 CP_KEY=... CP_SECRET=... OP_PRIV=... \
 
 - **Phase C** — the live console SPA (map + telemetry + command console) over the
   WebSocket layer.
-- **Hardening** — mTLS + ACLs on EMQX, telemetry/fault ingest, store-and-forward.
+- **Hardening (shipped — see §9)** — telemetry/fault ingest, mTLS, ACLs.
+
+---
+
+## 9. Hardening shipped
+
+- **Telemetry/fault ingest → Security Events** (commit `6e4fd22`): the bridge consumes
+  `ack` + `tlm/fault` + `tlm/odom`. A rejected command or a rover-initiated fault (e.g.
+  WATCHDOG) becomes a severity-mapped Security Event; odometry updates the Rover's last
+  pose. 10 unit tests + `smoke_security.py`.
+- **Mutual TLS** on EMQX `:8883` — `verify_peer` + `fail_if_no_peer_cert`, a local CA
+  (`gen_certs.sh`) issuing per-client certs (CN = `fcc-bridge` / `MARK1-001`). A no-cert
+  client is refused; valid-cert clients run the full signed command path (`smoke_mtls.py`).
+- **Topic ACLs** (`emqx/acl.conf`, `no_match=deny`) — a rover may only pub/sub its own
+  `mark1/<id>/…`; the bridge may pub `cmd/#` and sub `tlm|ack/#`. Verified: a rover
+  subscribing to another rover's topic is **denied**, authorized clients still work.
+- **Reproduce:** `bash gen_certs.sh && bash emqx/run_broker.sh` — stands up the mTLS broker
+  and loads the ACLs via the EMQX dashboard API (`emqx/configure_acl.py`).
+
+Still open: client-side signing agent, rover-telemetry signature verification, durable
+store-and-forward, and disabling plaintext `:1883` in production.
 
 ---
 

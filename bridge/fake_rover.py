@@ -18,16 +18,20 @@ import envelope as env
 
 
 class FakeRover:
-    def __init__(self, rover_id, operator_keys: dict, host="127.0.0.1", port=1883):
+    def __init__(self, rover_id, operator_keys: dict, host="127.0.0.1", port=1883,
+                 client_id=None, tls=None):
         # operator_keys: {operator_id: public_key_hex}
         self.rover_id = rover_id
         self.keys = {op: env.public_key_from_hex(k) for op, k in operator_keys.items()}
         self.last_nonce: dict[str, int] = {}
         self.received: list[tuple[dict, str]] = []
         self.host, self.port = host, port
+        # clientid defaults to the rover_id so the broker ACL can match it (= cert CN).
         self.client = mqtt.Client(
-            mqtt.CallbackAPIVersion.VERSION2, client_id=f"rover-{rover_id}"
+            mqtt.CallbackAPIVersion.VERSION2, client_id=client_id or rover_id
         )
+        if tls:
+            self.client.tls_set(ca_certs=tls["ca"], certfile=tls["cert"], keyfile=tls["key"])
         self.client.on_message = self._on_message
 
     def connect(self):
