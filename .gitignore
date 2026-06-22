@@ -13,3 +13,6 @@ build/
 .venv/
 bridge/.venv/
 bridge/certs/
+
+# Keystone P0 edge cache (runtime state, never committed)
+bridge/state/

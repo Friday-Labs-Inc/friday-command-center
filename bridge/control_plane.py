@@ -26,6 +26,12 @@ class ControlPlane:
     def issue_nonce(self, rover: str, operator: str) -> int:
         return int(self._call("issue_nonce", rover=rover, operator=operator))
 
+    def get_nonce_floor(self, rover: str, operator: str) -> int:
+        return int(self._call("get_nonce_floor", rover=rover, operator=operator))
+
+    def set_nonce_floor(self, rover: str, operator: str, nonce: int) -> int:
+        return int(self._call("set_nonce_floor", rover=rover, operator=operator, nonce=nonce))
+
     def get_allowlist(self, rover: str) -> list[dict]:
         return self._call("get_allowlist", rover=rover)
 

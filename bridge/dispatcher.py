@@ -18,12 +18,14 @@ import time
 from contextlib import asynccontextmanager
 
 import aiomqtt
+import requests
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 import envelope as env
 from control_plane import ControlPlane
+from edge_cache import EdgeCache, EdgeNonce
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CERTS = os.path.join(HERE, "certs")
@@ -35,6 +37,18 @@ CONSOLE_ORIGINS = os.environ.get(
 _CP = None
 if os.environ.get("CP_BASE") and os.environ.get("CP_KEY") and os.environ.get("CP_SECRET"):
     _CP = ControlPlane(os.environ["CP_BASE"], os.environ["CP_KEY"], os.environ["CP_SECRET"])
+
+# Keystone P0: read the allowlist through a durable edge cache so command authorization
+# survives a control-plane (Frappe) outage instead of failing closed.
+STATE_DIR = os.environ.get("FCC_STATE_DIR", os.path.join(HERE, "state"))
+_CACHE = (
+    EdgeCache(_CP, path=os.path.join(STATE_DIR, "edge_dispatch.json"),
+              on_offline=lambda r: print("[edge] control plane OFFLINE — serving cached allowlist:", r))
+    if _CP else None
+)
+# Edge owns the nonce: a durable, strictly-monotonic local counter so commands can still
+# be issued (and replays rejected) while Frappe is unreachable; Frappe is a best-effort mirror.
+_NONCE = EdgeNonce(_CP, path=os.path.join(STATE_DIR, "edge_nonce.json")) if _CP else None
 
 _state = {"mqtt": None}
 
@@ -90,8 +104,8 @@ class CommandReq(BaseModel):
 
 @app.post("/api/nonce")
 async def api_nonce(req: NonceReq):
-    cp = _require_cp()
-    nonce = await asyncio.to_thread(cp.issue_nonce, req.rover, req.operator)
+    _require_cp()
+    nonce = await asyncio.to_thread(_NONCE.issue, req.rover, req.operator)
     now = time.time()
     return {"nonce": nonce, "issued_at": now, "expires_at": now + env.DEFAULT_EXPIRY_S}
 
@@ -109,20 +123,42 @@ async def api_command(req: CommandReq):
     rover = envelope["rover_id"]
     operator = envelope["sender_id"]
 
-    allow = await asyncio.to_thread(cp.get_allowlist, rover)
+    allow = await asyncio.to_thread(_CACHE.get_allowlist, rover)
     pub_hex = {a["operator"]: a["public_key"] for a in allow}.get(operator)
     if not pub_hex or not env.verify(envelope, env.public_key_from_hex(pub_hex)):
         raise HTTPException(400, "signature invalid or operator not allowlisted")
+
+    # Reject stale or replayed commands at the dispatcher (not only at the rover). The
+    # signature verified above, so now enforce freshness on the control-plane-owned nonce.
+    if time.time() > float(envelope.get("expires_at") or 0):
+        raise HTTPException(400, "command expired")
+    if not _NONCE.consume(rover, operator, int(envelope["nonce"])):
+        try:
+            await asyncio.to_thread(
+                cp.record_security_event, rover=rover, operator=operator,
+                category="SECURITY_REPLAY", severity="Error",
+                description=f"replayed nonce {envelope['nonce']} rejected at dispatcher")
+        except Exception:  # noqa: BLE001 — never let the audit attempt mask the rejection
+            pass
+        raise HTTPException(400, "nonce replay rejected")
 
     client = _state["mqtt"]
     if client is None:
         raise HTTPException(503, "broker not connected")
     cmd_class = (envelope.get("payload") or {}).get("class", "motion")
     await client.publish(f"mark1/{rover}/cmd/{cmd_class}", env.encode(envelope), qos=1)
-    await asyncio.to_thread(
-        cp.record_command, rover=rover, operator=operator, command_class=cmd_class,
-        nonce=envelope["nonce"], outcome="Accepted", category="OK",
-        msg_id=envelope.get("msg_id"), payload=json.dumps(envelope.get("payload")),
-        signature=req.signature,
-    )
-    return {"ok": True, "nonce": envelope["nonce"]}
+
+    # The command is already on the wire; an offline audit must not fail it. The edge
+    # cache let us authorize offline, so the audit can lag and be reconciled later.
+    audited = True
+    try:
+        await asyncio.to_thread(
+            cp.record_command, rover=rover, operator=operator, command_class=cmd_class,
+            nonce=envelope["nonce"], outcome="Accepted", category="OK",
+            msg_id=envelope.get("msg_id"), payload=json.dumps(envelope.get("payload")),
+            signature=req.signature,
+        )
+    except (requests.ConnectionError, requests.Timeout) as exc:
+        audited = False
+        print("[edge] command published; audit deferred (control plane offline):", exc)
+    return {"ok": True, "nonce": envelope["nonce"], "audited": audited}

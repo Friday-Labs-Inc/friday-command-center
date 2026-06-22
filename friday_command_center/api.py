@@ -65,6 +65,34 @@ def issue_nonce(rover, operator):
 
 
 @frappe.whitelist()
+def get_nonce_floor(rover, operator):
+    """Read the (rover, operator) monotonic nonce floor WITHOUT consuming one (0 if it
+    does not exist yet). The edge nonce authority reconciles against this so a nonce the
+    control plane already issued is never reused after the edge takes over issuance."""
+    val = frappe.db.get_value("Operator Nonce Counter", _counter_name(rover, operator), "last_nonce")
+    return int(val or 0)
+
+
+@frappe.whitelist()
+def set_nonce_floor(rover, operator, nonce):
+    """Advance the (rover, operator) nonce floor to max(current, nonce) — the edge's
+    best-effort durable mirror of its locally-issued floor. Monotonic; never lowers it."""
+    name = _counter_name(rover, operator)
+    nonce = int(nonce)
+    if not frappe.db.exists("Operator Nonce Counter", name):
+        frappe.get_doc({
+            "doctype": "Operator Nonce Counter", "rover": rover, "operator": operator,
+            "last_nonce": nonce,
+        }).insert(ignore_permissions=True)
+        return nonce
+    frappe.db.sql(
+        "UPDATE `tabOperator Nonce Counter` SET last_nonce = GREATEST(last_nonce, %s) WHERE name = %s",
+        (nonce, name),
+    )
+    return int(frappe.db.get_value("Operator Nonce Counter", name, "last_nonce"))
+
+
+@frappe.whitelist()
 def get_allowlist(rover):
     """Return the enabled operators + public keys a rover trusts (what the bridge reads)."""
     out = []

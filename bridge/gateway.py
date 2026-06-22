@@ -26,6 +26,7 @@ from fastapi.staticfiles import StaticFiles
 
 import envelope as env
 from control_plane import ControlPlane
+from edge_cache import EdgeCache
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CERTS = os.path.join(HERE, "certs")
@@ -37,6 +38,15 @@ DISPATCHER = os.environ.get("DISPATCHER_URL", "http://127.0.0.1:8091")
 _CP = None
 if os.environ.get("CP_BASE") and os.environ.get("CP_KEY") and os.environ.get("CP_SECRET"):
     _CP = ControlPlane(os.environ["CP_BASE"], os.environ["CP_KEY"], os.environ["CP_SECRET"])
+
+# Keystone P0: serve rover telemetry-verification keys from a durable edge cache so
+# telemetry keeps verifying when the control plane (Frappe) is unreachable.
+STATE_DIR = os.environ.get("FCC_STATE_DIR", os.path.join(HERE, "state"))
+_CACHE = (
+    EdgeCache(_CP, path=os.path.join(STATE_DIR, "edge_gateway.json"),
+              on_offline=lambda r: print("[edge] control plane OFFLINE — serving cached rover keys:", r))
+    if _CP else None
+)
 
 
 class Hub:
@@ -66,16 +76,17 @@ _rover_keys: dict = {}  # rover_id -> Ed25519PublicKey (telemetry signing)
 
 
 async def _refresh_rover_keys():
-    if _CP is None:
+    if _CACHE is None:
         return
     try:
-        keys = await asyncio.to_thread(_CP.rover_keys)
-        _rover_keys.clear()
-        for rover, pub_hex in keys.items():
-            if pub_hex:
-                _rover_keys[rover] = env.public_key_from_hex(pub_hex)
-    except Exception as exc:  # noqa: BLE001
-        print("rover-key refresh failed:", exc)
+        keys = await asyncio.to_thread(_CACHE.rover_keys)
+    except Exception as exc:  # noqa: BLE001 — cold cache + Frappe down: keep existing keys
+        print("rover-key refresh failed (keeping existing keys):", exc)
+        return
+    _rover_keys.clear()
+    for rover, pub_hex in keys.items():
+        if pub_hex:
+            _rover_keys[rover] = env.public_key_from_hex(pub_hex)
 
 
 def _event(topic: str, payload: bytes):
