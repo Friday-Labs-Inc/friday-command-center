@@ -1,0 +1,165 @@
+// Carbon g100 dark theme — applied globally before any component styles.
+@use '@carbon/react/scss/themes';
+@use '@carbon/react/scss/theme' with ($theme: themes.$g100);
+@use '@carbon/react';
+
+html, body, #app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--cds-background);
+  color: var(--cds-text-primary);
+}
+
+// ── Layout ──────────────────────────────────────────────────────────────────
+// Carbon's Header is position:fixed at 3rem (48 px). Offset the content area.
+.cc-content-offset {
+  padding-top: 3rem;
+  height: 100vh;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+
+// 2 × 2 panel grid that fills the remaining viewport height.
+.cc-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: var(--cds-spacing-05);
+  padding: var(--cds-spacing-05);
+  overflow: hidden;
+}
+
+// ── Panels ───────────────────────────────────────────────────────────────────
+// Default: scrollable content panel.
+.cc-panel {
+  overflow: auto;
+  min-height: 0;
+}
+
+// Map panel: non-scrollable, flex column so the map div can fill remaining space.
+.cc-panel-map {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0 !important;
+}
+
+// ── Typography helpers ────────────────────────────────────────────────────────
+.cc-panel-heading {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--cds-text-secondary);
+  margin: 0 0 var(--cds-spacing-03) 0;
+}
+
+.cc-subheading {
+  font-size: 0.75rem;
+  color: var(--cds-text-secondary);
+  margin: var(--cds-spacing-05) 0 var(--cds-spacing-02) 0;
+}
+
+.cc-muted {
+  color: var(--cds-text-placeholder);
+}
+
+// ── Telemetry rows ────────────────────────────────────────────────────────────
+.cc-telemetry-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--cds-spacing-02) 0;
+  border-bottom: 1px solid var(--cds-border-subtle-01);
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.cc-telemetry-label {
+  color: var(--cds-text-secondary);
+}
+
+// ── Feed rows (live event stream) ─────────────────────────────────────────────
+.cc-feed-row {
+  display: flex;
+  align-items: center;
+  gap: var(--cds-spacing-02);
+  font-size: 0.75rem;
+  padding: var(--cds-spacing-01) var(--cds-spacing-03);
+  border-left: 2px solid var(--cds-border-subtle-01);
+  margin-bottom: var(--cds-spacing-01);
+  background: var(--cds-layer-accent-01);
+  overflow: hidden;
+}
+
+.cc-feed-data {
+  color: var(--cds-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// ── Alert / security rows ──────────────────────────────────────────────────────
+.cc-alert-row {
+  display: flex;
+  align-items: center;
+  gap: var(--cds-spacing-02);
+  font-size: 0.75rem;
+  padding: var(--cds-spacing-02) var(--cds-spacing-03);
+  border-left: 2px solid var(--cds-support-error);
+  margin-bottom: var(--cds-spacing-01);
+  background: var(--cds-layer-accent-01);
+}
+
+.cc-security-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--cds-spacing-02);
+  font-size: 0.75rem;
+  padding: var(--cds-spacing-02) var(--cds-spacing-03);
+  margin-bottom: var(--cds-spacing-01);
+  background: var(--cds-layer-accent-01);
+}
+
+.cc-security-time {
+  margin-left: auto;
+  color: var(--cds-text-placeholder);
+}
+
+// ── Header status badge ────────────────────────────────────────────────────────
+.cc-header-status {
+  display: flex;
+  align-items: center;
+  margin-right: var(--cds-spacing-05);
+}
+
+// ── Command console ────────────────────────────────────────────────────────────
+.cc-console-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--cds-spacing-05);
+}
+
+.cc-inputs-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--cds-spacing-03);
+  margin-bottom: var(--cds-spacing-05);
+}
+
+// ── Alerts panel header ────────────────────────────────────────────────────────
+.cc-alerts-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--cds-spacing-03);
+}
