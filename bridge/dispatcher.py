@@ -18,6 +18,7 @@ import time
 from contextlib import asynccontextmanager
 
 import aiomqtt
+import cbor2
 import requests
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -88,6 +89,21 @@ def _require_cp():
     return _CP
 
 
+def _with_bstr_payload(envelope: dict) -> dict:
+    """Return a copy of `envelope` with `payload` as an opaque canonical-CBOR byte-string.
+
+    The console signs a command whose `payload` is a plain JSON object; the wire contract
+    requires it to travel as a pre-serialized CBOR bstr so floats never re-encode across the
+    JS/Python/C++ boundary. The dispatcher (not the browser) is the CBOR producer, so it makes
+    the bstr here — identically in /api/sign-bytes and /api/command — and the operator signs
+    over exactly the bytes that get published. Bytes/str payloads are passed through untouched.
+    """
+    payload = envelope.get("payload")
+    if isinstance(payload, (dict, list)):
+        return {**envelope, "payload": cbor2.dumps(payload, canonical=True)}
+    return dict(envelope)
+
+
 class NonceReq(BaseModel):
     rover: str
     operator: str
@@ -106,19 +122,22 @@ class CommandReq(BaseModel):
 async def api_nonce(req: NonceReq):
     _require_cp()
     nonce = await asyncio.to_thread(_NONCE.issue, req.rover, req.operator)
-    now = time.time()
-    return {"nonce": nonce, "issued_at": now, "expires_at": now + env.DEFAULT_EXPIRY_S}
+    now_ms = int(time.time() * 1000)  # int64 epoch-ms wire timestamps
+    return {"nonce": nonce, "issued_at": now_ms, "expires_at": now_ms + env.DEFAULT_EXPIRY_MS}
 
 
 @app.post("/api/sign-bytes")
 async def api_sign_bytes(req: SignReq):
-    return {"signing_hex": env._signing_bytes(req.envelope).hex()}
+    return {"signing_hex": env._signing_bytes(_with_bstr_payload(req.envelope)).hex()}
 
 
 @app.post("/api/command")
 async def api_command(req: CommandReq):
     cp = _require_cp()
-    envelope = dict(req.envelope)
+    # The console's payload is a JSON object; keep it for the class route + human audit,
+    # then seal it into the opaque CBOR bstr the operator signed over (see _with_bstr_payload).
+    payload_obj = req.envelope.get("payload")
+    envelope = _with_bstr_payload(req.envelope)
     envelope["signature"] = bytes.fromhex(req.signature)
     rover = envelope["rover_id"]
     operator = envelope["sender_id"]
@@ -130,7 +149,11 @@ async def api_command(req: CommandReq):
 
     # Reject stale or replayed commands at the dispatcher (not only at the rover). The
     # signature verified above, so now enforce freshness on the control-plane-owned nonce.
-    if time.time() > float(envelope.get("expires_at") or 0):
+    # ±SKEW_MS around [issued_at, expires_at], matching the rover's CommandValidator.
+    now_ms = int(time.time() * 1000)
+    issued_at = int(envelope.get("issued_at") or 0)
+    expires_at = int(envelope.get("expires_at") or 0)
+    if not (issued_at - env.SKEW_MS <= now_ms <= expires_at + env.SKEW_MS):
         raise HTTPException(400, "command expired")
     if not _NONCE.consume(rover, operator, int(envelope["nonce"])):
         try:
@@ -145,7 +168,7 @@ async def api_command(req: CommandReq):
     client = _state["mqtt"]
     if client is None:
         raise HTTPException(503, "broker not connected")
-    cmd_class = (envelope.get("payload") or {}).get("class", "motion")
+    cmd_class = (payload_obj or {}).get("class", "motion") if isinstance(payload_obj, dict) else "motion"
     await client.publish(f"mark1/{rover}/cmd/{cmd_class}", env.encode(envelope), qos=1)
 
     # The command is already on the wire; an offline audit must not fail it. The edge
@@ -155,7 +178,7 @@ async def api_command(req: CommandReq):
         await asyncio.to_thread(
             cp.record_command, rover=rover, operator=operator, command_class=cmd_class,
             nonce=envelope["nonce"], outcome="Accepted", category="OK",
-            msg_id=envelope.get("msg_id"), payload=json.dumps(envelope.get("payload")),
+            msg_id=envelope.get("msg_id"), payload=json.dumps(payload_obj),
             signature=req.signature,
         )
     except (requests.ConnectionError, requests.Timeout) as exc:

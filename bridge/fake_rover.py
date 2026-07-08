@@ -11,6 +11,8 @@ can't run on macOS) so we can prove the signed command path through a real broke
 
 from __future__ import annotations
 
+import time
+
 import cbor2
 import paho.mqtt.client as mqtt
 
@@ -24,6 +26,7 @@ class FakeRover:
         self.rover_id = rover_id
         self.keys = {op: env.public_key_from_hex(k) for op, k in operator_keys.items()}
         self._signing_key = env.private_key_from_hex(signing_key_hex) if signing_key_hex else None
+        self._tlm_seq = 0  # monotonic msg_id/nonce for signed telemetry (unified envelope)
         self.last_nonce: dict[str, int] = {}
         self.received: list[tuple[dict, str]] = []
         self.host, self.port = host, port
@@ -56,8 +59,18 @@ class FakeRover:
         self._publish_tlm("odom", {"x": x, "y": y, "theta": theta})
 
     def _publish_tlm(self, kind, data):
-        # Sign the telemetry if a signing key is configured; else publish raw (legacy).
-        msg = env.sign_telemetry(self.rover_id, kind, data, self._signing_key) if self._signing_key else data
+        # Sign the telemetry if a signing key is configured (unified envelope, same shape
+        # the real rover produces); else publish raw (legacy). data rides as an opaque bstr.
+        if self._signing_key:
+            self._tlm_seq += 1
+            now_ms = int(time.time() * 1000)
+            msg = env.sign_telemetry(
+                rover_id=self.rover_id, msg_id=self._tlm_seq, nonce=self._tlm_seq,
+                issued_at=now_ms, expires_at=now_ms + env.DEFAULT_EXPIRY_MS,
+                payload=cbor2.dumps(data), private_key=self._signing_key,
+            )
+        else:
+            msg = data
         self.client.publish(f"mark1/{self.rover_id}/tlm/{kind}", cbor2.dumps(msg), qos=1)
 
     def _on_message(self, client, userdata, msg):

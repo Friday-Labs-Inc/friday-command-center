@@ -25,7 +25,8 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 PROTOCOL_MAJOR = 0
 PROTOCOL_MINOR = 1
 PROTOCOL_PATCH = 0
-DEFAULT_EXPIRY_S = 30.0
+DEFAULT_EXPIRY_MS = 30_000
+SKEW_MS = 5_000
 
 
 def _signing_bytes(envelope: dict) -> bytes:
@@ -38,7 +39,17 @@ def build_envelope(
     *, rover_id, sender_id, msg_id, nonce, issued_at, expires_at, payload,
     private_key: Ed25519PrivateKey,
 ) -> dict:
-    """Build and sign a command/telemetry envelope."""
+    """Build and sign a command/telemetry envelope.
+
+    payload must be pre-serialized CBOR bytes (cbor2.dumps before calling).
+    issued_at and expires_at must be int64 epoch-milliseconds, not float seconds.
+    """
+    if not isinstance(payload, (bytes, bytearray)):
+        raise TypeError(
+            "payload must be pre-serialized bytes (opaque CBOR bstr), not "
+            f"{type(payload).__name__} — re-encoding it breaks cross-language signatures")
+    if not (isinstance(issued_at, int) and isinstance(expires_at, int)):
+        raise TypeError("issued_at/expires_at must be int64 epoch-ms, not float")
     envelope = {
         "protocol_version": {
             "major": PROTOCOL_MAJOR, "minor": PROTOCOL_MINOR, "patch": PROTOCOL_PATCH,
@@ -53,6 +64,20 @@ def build_envelope(
     }
     envelope["signature"] = private_key.sign(_signing_bytes(envelope))
     return envelope
+
+
+def sign_telemetry(*, rover_id, msg_id, nonce, issued_at, expires_at, payload,
+                   private_key: Ed25519PrivateKey) -> dict:
+    """Build a signed telemetry envelope using the unified envelope format.
+
+    Telemetry uses the same wire envelope as commands; sender_id is set to rover_id.
+    payload must be pre-serialized CBOR bytes.
+    """
+    return build_envelope(
+        rover_id=rover_id, sender_id=rover_id, msg_id=msg_id, nonce=nonce,
+        issued_at=issued_at, expires_at=expires_at, payload=payload,
+        private_key=private_key,
+    )
 
 
 def encode(envelope: dict) -> bytes:
@@ -72,6 +97,15 @@ def verify(envelope: dict, public_key: Ed25519PublicKey) -> bool:
         return True
     except (InvalidSignature, KeyError, TypeError):
         return False
+
+
+def verify_telemetry(envelope: dict, public_key: Ed25519PublicKey) -> bool:
+    """True iff the telemetry envelope's signature is valid for `public_key`.
+
+    Telemetry now uses the same unified envelope shape as commands; this delegates
+    to verify() for a consistent single code path.
+    """
+    return verify(envelope, public_key)
 
 
 # ---- key helpers (hex <-> key objects), matching the operator allowlist format ----
@@ -95,25 +129,3 @@ def generate_keypair() -> tuple[str, str]:
         serialization.Encoding.Raw, serialization.PublicFormat.Raw
     ).hex()
     return priv_hex, pub_hex
-
-
-# ---- rover telemetry signing (rover signs; the gateway verifies) ----
-def sign_telemetry(rover_id: str, kind: str, data, private_key: Ed25519PrivateKey) -> dict:
-    """Build a signed telemetry message {rover_id, kind, data, sig}. The signature
-    covers the canonical CBOR of the message minus `sig` — same rule as commands."""
-    msg = {"rover_id": rover_id, "kind": kind, "data": data}
-    msg["sig"] = private_key.sign(_signing_bytes_tlm(msg))
-    return msg
-
-
-def verify_telemetry(msg: dict, public_key: Ed25519PublicKey) -> bool:
-    try:
-        public_key.verify(msg["sig"], _signing_bytes_tlm(msg))
-        return True
-    except (InvalidSignature, KeyError, TypeError):
-        return False
-
-
-def _signing_bytes_tlm(msg: dict) -> bytes:
-    unsigned = {k: v for k, v in msg.items() if k != "sig"}
-    return cbor2.dumps(unsigned, canonical=True)

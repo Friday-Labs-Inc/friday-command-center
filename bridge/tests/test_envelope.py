@@ -6,18 +6,23 @@ rover's protocol.py enforces (identical canonical-CBOR signing bytes).
 
 import time
 
+import cbor2
+
 import envelope as env
+
+_PAYLOAD = {"class": "motion", "type": 1, "linear_velocity": 0.5}
 
 
 def _build(private_key, **overrides):
+    now_ms = int(time.time() * 1000)
     args = dict(
         rover_id="MARK1-001",
         sender_id="OP-001",
         msg_id=1,
         nonce=1,
-        issued_at=time.time(),
-        expires_at=time.time() + env.DEFAULT_EXPIRY_S,
-        payload={"class": "motion", "type": 1, "linear_velocity": 0.5},
+        issued_at=now_ms,
+        expires_at=now_ms + env.DEFAULT_EXPIRY_MS,
+        payload=cbor2.dumps(_PAYLOAD),
         private_key=private_key,
     )
     args.update(overrides)
@@ -43,7 +48,8 @@ def test_required_fields_present():
 def test_tampered_payload_fails_verify():
     priv_hex, pub_hex = env.generate_keypair()
     e = _build(env.private_key_from_hex(priv_hex))
-    e["payload"] = {**e["payload"], "linear_velocity": 9.9}  # tamper after signing
+    tampered = {**cbor2.loads(e["payload"]), "linear_velocity": 9.9}  # tamper after signing
+    e["payload"] = cbor2.dumps(tampered)
     assert env.verify(e, env.public_key_from_hex(pub_hex)) is False
 
 

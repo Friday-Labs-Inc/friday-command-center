@@ -11,6 +11,7 @@ The gateway must already be running (it fetches rover keys on connect).
 import asyncio
 import json
 import os
+import time
 
 import cbor2
 import websockets
@@ -36,10 +37,14 @@ async def main() -> int:
         # 1. valid signed odom -> should arrive, marked verified
         rover.emit_odom(1.45, 0.0, 0.0)
 
-        # 2. tampered: sign {x:9.99}, then flip data after signing -> bad sig -> dropped
-        msg = env.sign_telemetry("MARK1-001", "odom", {"x": 9.99, "y": 0.0, "theta": 0.0},
-                                 env.private_key_from_hex(rpriv))
-        msg["data"]["x"] = 0.0
+        # 2. tampered: sign {x:9.99}, then swap the payload bstr after signing -> bad sig -> dropped
+        now_ms = int(time.time() * 1000)
+        msg = env.sign_telemetry(
+            rover_id="MARK1-001", msg_id=2, nonce=2, issued_at=now_ms,
+            expires_at=now_ms + env.DEFAULT_EXPIRY_MS,
+            payload=cbor2.dumps({"x": 9.99, "y": 0.0, "theta": 0.0}),
+            private_key=env.private_key_from_hex(rpriv))
+        msg["payload"] = cbor2.dumps({"x": 0.0, "y": 0.0, "theta": 0.0})  # tamper after signing
         rover.client.publish("mark1/MARK1-001/tlm/odom", cbor2.dumps(msg), qos=1)
 
         try:

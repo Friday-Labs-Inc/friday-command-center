@@ -7,6 +7,7 @@ end-to-end evidence that a control-plane outage no longer blacks out commanding.
 
 import time
 
+import cbor2
 import requests
 
 import envelope as env
@@ -44,19 +45,24 @@ def _authorize(cache, nonces, envelope) -> str:
     pub_hex = {a["operator"]: a["public_key"] for a in allow}.get(operator)
     if not pub_hex or not env.verify(envelope, env.public_key_from_hex(pub_hex)):
         return "bad-signature"
-    if time.time() > float(envelope.get("expires_at") or 0):
+    # Freshness gate: ±SKEW_MS around [issued_at, expires_at], matching the rover's
+    # CommandValidator and the dispatcher (int64 epoch-ms wire timestamps).
+    now_ms = int(time.time() * 1000)
+    issued_at = envelope.get("issued_at", 0)
+    expires_at = envelope.get("expires_at", 0)
+    if not (issued_at - env.SKEW_MS <= now_ms <= expires_at + env.SKEW_MS):
         return "expired"
     if not nonces.consume(rover, operator, int(envelope["nonce"])):
         return "replay"
     return "accepted"
 
 
-def _signed_command(priv_hex, nonce, *, expires_in=env.DEFAULT_EXPIRY_S):
-    now = time.time()
+def _signed_command(priv_hex, nonce, *, expires_in=env.DEFAULT_EXPIRY_MS):
+    now_ms = int(time.time() * 1000)
     return env.build_envelope(
         rover_id="MARK1-001", sender_id="OP-001", msg_id=nonce, nonce=nonce,
-        issued_at=now, expires_at=now + expires_in,
-        payload={"class": "motion", "v": 0.5, "w": 0.0},
+        issued_at=now_ms, expires_at=now_ms + expires_in,
+        payload=cbor2.dumps({"class": "motion", "v": 0.5, "w": 0.0}),
         private_key=env.private_key_from_hex(priv_hex))
 
 
@@ -87,7 +93,10 @@ def test_replay_rejected_with_frappe_down(tmp_path):
 
 def test_expired_rejected_with_frappe_down(tmp_path):
     priv_hex, cache, nonces = _offline_rig(tmp_path)
-    cmd = _signed_command(priv_hex, nonces.issue("MARK1-001", "OP-001"), expires_in=-1)
+    # Expire well outside the ±SKEW_MS freshness window so the gate actually fires
+    # (a -1 ms expiry would still fall inside the 5 s skew tolerance and be accepted).
+    cmd = _signed_command(priv_hex, nonces.issue("MARK1-001", "OP-001"),
+                          expires_in=-(env.SKEW_MS + 1000))
     assert _authorize(cache, nonces, cmd) == "expired"
 
 

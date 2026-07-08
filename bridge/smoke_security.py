@@ -10,6 +10,8 @@ Env: CP_BASE, CP_KEY, CP_SECRET, OP_PRIV, MQTT_HOST (default 127.0.0.1).
 import os
 import time
 
+import cbor2
+
 import envelope as env
 from bridge import CommandCenterBridge
 from control_plane import ControlPlane
@@ -40,10 +42,11 @@ def main() -> int:
         operator_private_key=op_priv,
     )
     time.sleep(0.5)
+    replay_now = int(time.time() * 1000)
     replay = env.build_envelope(
         rover_id=ROVER, sender_id=OPERATOR, msg_id=nonce, nonce=nonce,
-        issued_at=time.time(), expires_at=time.time() + env.DEFAULT_EXPIRY_S,
-        payload={"class": "motion", "type": 1, "linear_velocity": 0.5},
+        issued_at=replay_now, expires_at=replay_now + env.DEFAULT_EXPIRY_MS,
+        payload=cbor2.dumps({"class": "motion", "type": 1, "linear_velocity": 0.5}),
         private_key=op_priv,
     )
     bridge.client.publish(f"mark1/{ROVER}/cmd/motion", env.encode(replay), qos=1)

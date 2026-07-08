@@ -19,6 +19,7 @@ import os
 from contextlib import asynccontextmanager
 
 import aiomqtt
+import cbor2
 import httpx
 from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
@@ -92,19 +93,25 @@ async def _refresh_rover_keys():
 def _event(topic: str, payload: bytes):
     parts = topic.split("/")
     rover = parts[1] if len(parts) > 1 else "?"
+    kind = ("odom" if "/tlm/odom" in topic else "fault" if "/tlm/fault" in topic
+            else "ack" if "/ack/" in topic else "telemetry")
     try:
         msg = env.decode(payload)
     except Exception:  # noqa: BLE001
-        return {"kind": "telemetry", "rover": rover, "topic": topic, "data": None, "verified": None}
-    if isinstance(msg, dict) and "sig" in msg and "kind" in msg:
+        return {"kind": kind, "rover": rover, "topic": topic, "data": None, "verified": None}
+    # Signed rover telemetry rides the unified envelope (same shape as a command): it has a
+    # `signature` + `protocol_version`, and the actual reading is an opaque CBOR bstr `payload`.
+    if isinstance(msg, dict) and "signature" in msg and "protocol_version" in msg:
         pub = _rover_keys.get(rover)
         if not (pub and env.verify_telemetry(msg, pub)):
             print(f"DROP unverifiable telemetry from {rover} on {topic}")
             return None
-        return {"kind": msg.get("kind"), "rover": rover, "topic": topic,
-                "data": msg.get("data"), "verified": True}
-    kind = ("odom" if "/tlm/odom" in topic else "fault" if "/tlm/fault" in topic
-            else "ack" if "/ack/" in topic else "telemetry")
+        raw = msg.get("payload")
+        try:
+            data = cbor2.loads(raw) if isinstance(raw, (bytes, bytearray)) else raw
+        except Exception:  # noqa: BLE001
+            data = None
+        return {"kind": kind, "rover": rover, "topic": topic, "data": data, "verified": True}
     return {"kind": kind, "rover": rover, "topic": topic, "data": msg,
             "verified": (False if "/tlm/" in topic else None)}
 
