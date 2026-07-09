@@ -1,0 +1,320 @@
+// Carbon g100 dark theme — applied globally before any component styles.
+// <Theme theme="g100"> in main.tsx adds the .cds--g100 class for layer-token
+// scoping; this file outputs the CSS custom properties at the root level.
+@use '@carbon/react/scss/themes';
+@use '@carbon/react/scss/theme' with ($theme: themes.$g100);
+@use '@carbon/react';
+@use '@carbon/react/scss/spacing';
+@use '@carbon/react/scss/breakpoint';
+
+// ── Base ─────────────────────────────────────────────────────────────────────
+
+html, body, #app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--cds-background);
+  color: var(--cds-text-primary);
+}
+
+// ── Shell layout ──────────────────────────────────────────────────────────────
+// Carbon Header is position:fixed, h = 3rem (48px).
+// Carbon SideNav (isFixedNav + isPersistent) is position:fixed, w = 16rem.
+// Offset main content so it doesn't hide under either.
+
+.cc-shell-main {
+  padding-top: 3rem;    // header height
+  padding-left: 16rem;  // sidenav width
+  min-height: 100vh;
+  box-sizing: border-box;
+
+  @include breakpoint.breakpoint-down('lg') {
+    padding-left: 0;
+  }
+}
+
+// ── Page layout ───────────────────────────────────────────────────────────────
+
+.cc-page {
+  padding: spacing.$spacing-07 spacing.$spacing-06;
+}
+
+.cc-page-header {
+  margin-bottom: spacing.$spacing-06;
+}
+
+.cc-page-title {
+  // Carbon productive-heading-04
+  font-size: 1.75rem;
+  font-weight: 400;
+  line-height: 2.25rem;
+  letter-spacing: 0;
+  margin: spacing.$spacing-03 0 spacing.$spacing-02;
+  text-wrap: balance;
+}
+
+.cc-page-description {
+  font-size: 0.875rem;
+  color: var(--cds-text-secondary);
+  margin: 0 0 spacing.$spacing-05;
+}
+
+.cc-page-breadcrumb {
+  margin-bottom: spacing.$spacing-03;
+}
+
+.cc-page-actions {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  padding-bottom: spacing.$spacing-05;
+}
+
+// ── KPI tiles ─────────────────────────────────────────────────────────────────
+
+.cc-kpi-tile {
+  min-height: 6rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.cc-kpi-inner {
+  flex: 1;
+}
+
+.cc-kpi-icon {
+  color: var(--cds-text-secondary);
+  margin-bottom: spacing.$spacing-03;
+}
+
+.cc-kpi-label {
+  font-size: 0.75rem;
+  font-weight: 400;
+  letter-spacing: 0.32px;
+  color: var(--cds-text-secondary);
+  margin: 0 0 spacing.$spacing-02;
+}
+
+.cc-kpi-value {
+  font-size: 2rem;
+  font-weight: 300;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--cds-text-primary);
+  margin: 0;
+}
+
+.cc-kpi-trend {
+  margin-top: spacing.$spacing-03;
+  font-size: 0.75rem;
+  color: var(--cds-text-secondary);
+}
+
+// ── Header status badge ────────────────────────────────────────────────────────
+
+.cc-header-status {
+  display: flex;
+  align-items: center;
+  padding: 0 spacing.$spacing-04;
+}
+
+// ── Command console ────────────────────────────────────────────────────────────
+
+.cc-console-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: spacing.$spacing-05;
+}
+
+.cc-inputs-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: spacing.$spacing-05;
+}
+
+// ── MapPanel ──────────────────────────────────────────────────────────────────
+// Kept for MapPanel.tsx (reused by FleetDashboard page agent).
+
+.cc-panel-map {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0 !important;
+}
+
+// ── Typography helpers ─────────────────────────────────────────────────────────
+
+.cc-panel-heading {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--cds-text-secondary);
+  margin: 0 0 spacing.$spacing-03;
+}
+
+.cc-subheading {
+  font-size: 0.75rem;
+  color: var(--cds-text-secondary);
+  margin: spacing.$spacing-05 0 spacing.$spacing-02;
+}
+
+.cc-muted {
+  color: var(--cds-text-placeholder);
+}
+
+// ── Telemetry rows (kept for RoverDetail page agent) ──────────────────────────
+
+.cc-telemetry-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: spacing.$spacing-02 0;
+  border-bottom: 1px solid var(--cds-border-subtle-01);
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.cc-telemetry-label {
+  color: var(--cds-text-secondary);
+}
+
+// ── Feed rows (kept for SecurityAudit page agent) ─────────────────────────────
+
+.cc-feed-row {
+  display: flex;
+  align-items: center;
+  gap: spacing.$spacing-02;
+  font-size: 0.75rem;
+  padding: spacing.$spacing-01 spacing.$spacing-03;
+  border-left: 2px solid var(--cds-border-subtle-01);
+  margin-bottom: spacing.$spacing-01;
+  background: var(--cds-layer-accent-01);
+  overflow: hidden;
+}
+
+.cc-feed-data {
+  color: var(--cds-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// ── Alert rows (kept for SecurityAudit page agent) ────────────────────────────
+
+.cc-alert-row {
+  display: flex;
+  align-items: center;
+  gap: spacing.$spacing-02;
+  font-size: 0.75rem;
+  padding: spacing.$spacing-02 spacing.$spacing-03;
+  border-left: 2px solid var(--cds-support-error);
+  margin-bottom: spacing.$spacing-01;
+  background: var(--cds-layer-accent-01);
+}
+
+.cc-security-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: spacing.$spacing-02;
+  font-size: 0.75rem;
+  padding: spacing.$spacing-02 spacing.$spacing-03;
+  margin-bottom: spacing.$spacing-01;
+  background: var(--cds-layer-accent-01);
+}
+
+.cc-security-time {
+  margin-left: auto;
+  color: var(--cds-text-placeholder);
+}
+
+// ── Alerts panel header (kept for SecurityAudit page agent) ──────────────────
+
+.cc-alerts-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: spacing.$spacing-03;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  CONFIG-PANEL DESIGN SYSTEM  — Friday Labs OS control panel
+//  Content is capped and given a proper vertical rhythm; cards use the Carbon
+//  layer tokens with a status accent so depth + state read at a glance.
+// ════════════════════════════════════════════════════════════════════════════
+
+.cc-page {                       // redefined: cap width + generous bottom room
+  max-width: 1568px;
+  padding: spacing.$spacing-07 spacing.$spacing-07 spacing.$spacing-10;
+}
+
+.cc-pagehead        { margin-bottom: spacing.$spacing-08; }
+.cc-pagehead__eyebrow {
+  font-size: 0.75rem; letter-spacing: 0.32px; font-weight: 400;
+  text-transform: uppercase; color: var(--cds-text-secondary);
+  margin: 0 0 spacing.$spacing-03;
+}
+.cc-pagehead__title {
+  font-size: 2rem; font-weight: 300; line-height: 2.5rem; letter-spacing: 0;
+  color: var(--cds-text-primary); margin: 0 0 spacing.$spacing-03;
+}
+.cc-pagehead__sub   { font-size: 1rem; color: var(--cds-text-secondary); margin: 0; max-width: 64ch; }
+.cc-pagehead__row   { display: flex; align-items: flex-start; justify-content: space-between; gap: spacing.$spacing-06; flex-wrap: wrap; }
+
+.cc-section         { margin-bottom: spacing.$spacing-09; }
+.cc-section__head   {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: spacing.$spacing-05; margin-bottom: spacing.$spacing-05;
+  padding-bottom: spacing.$spacing-03; border-bottom: 1px solid var(--cds-border-subtle-01);
+}
+.cc-section__title  { font-size: 1rem; font-weight: 600; margin: 0; color: var(--cds-text-primary); }
+.cc-section__meta   { font-size: 0.75rem; color: var(--cds-text-secondary); }
+
+.cc-grid            { display: grid; gap: spacing.$spacing-05; align-items: stretch; }
+.cc-grid--3         { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.cc-grid--4         { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.cc-grid--2         { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@include breakpoint.breakpoint-down('lg') { .cc-grid--4 { grid-template-columns: repeat(2, 1fr); } }
+@include breakpoint.breakpoint-down('md') {
+  .cc-grid--3, .cc-grid--4, .cc-grid--2 { grid-template-columns: 1fr; }
+}
+
+// ── Card (a Tile on --cds-layer, with a state accent stripe) ────────────────
+.cc-card {
+  position: relative; height: 100%; box-sizing: border-box;
+  padding: spacing.$spacing-06 !important;
+  border: 1px solid var(--cds-border-subtle-01);
+  display: flex; flex-direction: column;
+}
+.cc-card::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+  background: var(--cc-accent, transparent);
+}
+.cc-card__head  { display: flex; align-items: flex-start; justify-content: space-between; gap: spacing.$spacing-04; margin-bottom: spacing.$spacing-05; }
+.cc-card__title { font-size: 0.875rem; font-weight: 600; margin: 0; color: var(--cds-text-primary); }
+.cc-card__eyebrow { font-size: 0.75rem; letter-spacing: 0.32px; text-transform: uppercase; color: var(--cds-text-secondary); margin: 0 0 spacing.$spacing-02; }
+.cc-card__icon  { color: var(--cds-text-secondary); flex-shrink: 0; }
+.cc-card__body  { flex: 1 1 auto; }
+.cc-card__metric { font-size: 2.25rem; font-weight: 300; line-height: 1; font-variant-numeric: tabular-nums; color: var(--cds-text-primary); margin: 0; }
+.cc-card__metric small { font-size: 1rem; color: var(--cds-text-secondary); font-weight: 400; margin-left: spacing.$spacing-02; }
+.cc-card__meta  { font-size: 0.75rem; color: var(--cds-text-secondary); margin: spacing.$spacing-03 0 0; }
+.cc-card__foot  { margin-top: spacing.$spacing-05; display: flex; gap: spacing.$spacing-03; align-items: center; }
+
+// ── Key/value config rows ───────────────────────────────────────────────────
+.cc-kv     { display: flex; justify-content: space-between; gap: spacing.$spacing-05; padding: spacing.$spacing-04 0; border-bottom: 1px solid var(--cds-border-subtle-01); font-size: 0.875rem; }
+.cc-kv:last-child { border-bottom: 0; }
+.cc-kv__k  { color: var(--cds-text-secondary); }
+.cc-kv__v  { color: var(--cds-text-primary); font-variant-numeric: tabular-nums; text-align: right; }
+.cc-kv__v code { font-family: var(--cds-code-01-font-family, monospace); font-size: 0.8125rem; }
+
+// ── Status dot ──────────────────────────────────────────────────────────────
+.cc-dot      { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: spacing.$spacing-03; vertical-align: baseline; flex-shrink: 0; }
+.cc-dot--ok  { background: var(--cds-support-success); }
+.cc-dot--warn{ background: var(--cds-support-warning); }
+.cc-dot--err { background: var(--cds-support-error); }
+.cc-dot--off { background: var(--cds-text-placeholder); }

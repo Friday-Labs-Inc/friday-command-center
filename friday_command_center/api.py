@@ -330,3 +330,116 @@ def lift_revocation(revocation):
     for entry in frappe.get_all("Rover Operator Allowlist", filters=filters, pluck="name"):
         frappe.db.set_value("Rover Operator Allowlist", entry, "enabled", 1)
     return {"revocation": revocation, "status": "Lifted"}
+
+
+# ---- fleet read ----
+@frappe.whitelist()
+def list_fleets():
+    return frappe.get_all(
+        "Fleet",
+        fields=["name", "fleet_name", "status", "description"],
+        order_by="name",
+    )
+
+
+# ---- mission read ----
+@frappe.whitelist()
+def list_missions():
+    return frappe.get_all(
+        "Mission",
+        fields=["name", "title", "rover", "status", "approved_by", "approved_on"],
+        order_by="creation desc",
+    )
+
+
+@frappe.whitelist()
+def get_mission(name):
+    """Return a Mission doc as dict with waypoints ordered by seq."""
+    doc = frappe.get_doc("Mission", name)
+    out = doc.as_dict()
+    out["waypoints"] = sorted(
+        [{"seq": w.seq, "x": w.x, "y": w.y, "action": w.action} for w in doc.waypoints],
+        key=lambda w: w["seq"],
+    )
+    return out
+
+
+# ---- operator read ----
+@frappe.whitelist()
+def list_operators():
+    return frappe.get_all(
+        "Operator",
+        fields=["name", "operator_id", "operator_name", "status", "key_fingerprint", "user"],
+        order_by="name",
+    )
+
+
+@frappe.whitelist()
+def list_operator_revocations():
+    return frappe.get_all(
+        "Operator Revocation",
+        fields=["name", "operator", "scope", "rover", "status", "epoch", "revoked_on", "reason"],
+        order_by="epoch desc",
+    )
+
+
+# ---- PKI reads ----
+@frappe.whitelist()
+def list_certificates(status=None, rover=None):
+    filters = {}
+    if status:
+        filters["status"] = status
+    if rover:
+        filters["rover"] = rover
+    return frappe.get_all(
+        "Rover Certificate",
+        filters=filters,
+        fields=[
+            "name", "rover", "common_name", "status", "serial", "fingerprint",
+            "issued_on", "expires_on", "revoked_on", "revoked_reason",
+        ],
+        order_by="creation desc",
+    )
+
+
+@frappe.whitelist()
+def list_certificate_authorities():
+    # CA fields: name (=ca_name), ca_name, common_name, ca_type, status, fingerprint, created_on
+    return frappe.get_all(
+        "Certificate Authority",
+        fields=["name", "ca_name", "common_name", "ca_type", "status", "fingerprint", "created_on"],
+        order_by="name",
+    )
+
+
+# ---- audit log read ----
+@frappe.whitelist()
+def list_command_audit(rover=None, limit=50):
+    filters = {"rover": rover} if rover else {}
+    return frappe.get_all(
+        "Command Audit Log",
+        filters=filters,
+        fields=[
+            "name", "rover", "operator", "command_class", "outcome", "category",
+            "msg_id", "nonce", "issued_at", "expires_at", "received_at",
+        ],
+        order_by="received_at desc",
+        limit=int(limit),
+    )
+
+
+# ---- security event admin ----
+@frappe.whitelist()
+def acknowledge_security_event(name):
+    doc = frappe.get_doc("Security Event", name)
+    doc.acknowledged = 1
+    doc.acknowledged_by = frappe.session.user or "operator"
+    doc.acknowledged_on = now_datetime()
+    doc.save(ignore_permissions=True)
+    return {"name": name, "acknowledged": 1}
+
+
+# ---- settings read ----
+@frappe.whitelist()
+def get_settings():
+    return frappe.get_single("Command Center Settings").as_dict()

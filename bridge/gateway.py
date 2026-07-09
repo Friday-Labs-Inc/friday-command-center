@@ -23,6 +23,7 @@ import httpx
 from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 import envelope as env
 from control_plane import ControlPlane
@@ -197,6 +198,169 @@ async def ws(websocket: WebSocket):
             await websocket.receive_text()
     except WebSocketDisconnect:
         hub.leave(websocket)
+
+
+# ---- extended read + admin-write REST ----------------------------------------
+# NOTE: all admin writes below are token-auth'd via the Frappe control plane
+# (CP_KEY / CP_SECRET).  Per-operator RBAC inside the gateway is a documented
+# follow-up; it is out of scope for this phase.
+
+# -- Pydantic request bodies --
+
+class MissionBody(BaseModel):
+    title: str
+    rover: str | None = None
+    waypoints: list[dict] | None = None
+    payload: str | None = None
+
+
+class RevokeOperatorBody(BaseModel):
+    operator: str
+    scope: str = "All Rovers"
+    rover: str | None = None
+    reason: str | None = None
+
+
+class LiftRevocationBody(BaseModel):
+    name: str
+
+
+class IssueCertBody(BaseModel):
+    rover: str
+    cert_pem: str | None = None
+    serial: str | None = None
+    fingerprint: str | None = None
+    expires_on: str | None = None
+    issuing_ca: str | None = None
+
+
+class RevokeCertBody(BaseModel):
+    name: str
+    reason: str | None = None
+
+
+class AckEventBody(BaseModel):
+    name: str
+
+
+# -- fleet --
+
+@app.get("/api/fleets")
+async def api_fleets():
+    cp = _require_cp()
+    return await asyncio.to_thread(cp.list_fleets)
+
+
+# -- missions --
+
+@app.get("/api/missions")
+async def api_missions():
+    cp = _require_cp()
+    return await asyncio.to_thread(cp.list_missions)
+
+
+@app.get("/api/mission")
+async def api_get_mission(name: str):
+    cp = _require_cp()
+    return await asyncio.to_thread(cp.get_mission, name)
+
+
+@app.post("/api/mission")
+async def api_create_mission(body: MissionBody):
+    cp = _require_cp()
+    name = await asyncio.to_thread(
+        cp.upload_mission, body.title, body.rover, body.waypoints, body.payload
+    )
+    return {"name": name}
+
+
+# -- operators --
+
+@app.get("/api/operators")
+async def api_operators():
+    cp = _require_cp()
+    return await asyncio.to_thread(cp.list_operators)
+
+
+@app.get("/api/allowlist")
+async def api_allowlist(rover: str):
+    cp = _require_cp()
+    return await asyncio.to_thread(cp.get_allowlist, rover)
+
+
+@app.post("/api/operator/revoke")
+async def api_revoke_operator(body: RevokeOperatorBody):
+    cp = _require_cp()
+    return await asyncio.to_thread(
+        cp.revoke_operator, body.operator, body.scope, body.rover, body.reason
+    )
+
+
+@app.get("/api/revocations")
+async def api_revocations():
+    cp = _require_cp()
+    return await asyncio.to_thread(cp.list_operator_revocations)
+
+
+@app.post("/api/revocation/lift")
+async def api_lift_revocation(body: LiftRevocationBody):
+    cp = _require_cp()
+    return await asyncio.to_thread(cp.lift_revocation, body.name)
+
+
+# -- PKI --
+
+@app.get("/api/certificates")
+async def api_certificates(status: str | None = None, rover: str | None = None):
+    cp = _require_cp()
+    return await asyncio.to_thread(cp.list_certificates, status, rover)
+
+
+@app.get("/api/certificate-authorities")
+async def api_certificate_authorities():
+    cp = _require_cp()
+    return await asyncio.to_thread(cp.list_certificate_authorities)
+
+
+@app.post("/api/certificate/issue")
+async def api_issue_certificate(body: IssueCertBody):
+    cp = _require_cp()
+    name = await asyncio.to_thread(
+        cp.issue_rover_certificate,
+        body.rover, body.cert_pem, body.serial,
+        body.fingerprint, body.expires_on, body.issuing_ca,
+    )
+    return {"name": name}
+
+
+@app.post("/api/certificate/revoke")
+async def api_revoke_certificate(body: RevokeCertBody):
+    cp = _require_cp()
+    return await asyncio.to_thread(cp.revoke_rover_certificate, body.name, body.reason)
+
+
+# -- audit log --
+
+@app.get("/api/audit")
+async def api_audit(rover: str | None = None, limit: int = 50):
+    cp = _require_cp()
+    return await asyncio.to_thread(cp.list_command_audit, rover, limit)
+
+
+# -- security event ack --
+
+@app.post("/api/security-event/ack")
+async def api_ack_security_event(body: AckEventBody):
+    cp = _require_cp()
+    return await asyncio.to_thread(cp.acknowledge_security_event, body.name)
+
+
+# -- settings --
+
+@app.get("/api/settings")
+async def api_settings():
+    cp = _require_cp()
+    return await asyncio.to_thread(cp.get_settings)
 
 
 # ---- SPA serving (mounted LAST so it never shadows the routes above) ----
