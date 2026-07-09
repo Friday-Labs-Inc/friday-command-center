@@ -4,8 +4,8 @@
 
 import { useRef, useEffect } from 'react'
 import { Map as MlMap, Marker } from 'maplibre-gl'
-import { Tile } from '@carbon/react'
-import { useGateway } from '../gateway'
+import { Layer, Tile } from '@carbon/react'
+import { useLiveStore } from '../lib/store'
 
 const BASE_LNG = 77.5946
 const BASE_LAT = 12.9716
@@ -34,7 +34,7 @@ export function MapPanel() {
   const mapEl = useRef<HTMLDivElement>(null)
   const mapRef = useRef<MlMap | null>(null)
   const markerRef = useRef<Marker | null>(null)
-  const { rover } = useGateway()
+  const { rover } = useLiveStore()
 
   // Initialise map once on mount; tear down on unmount.
   useEffect(() => {
@@ -61,22 +61,24 @@ export function MapPanel() {
   }, [rover.x, rover.y])
 
   return (
-    <Tile className="cc-panel-map">
-      <h2
-        className="cc-panel-heading"
-        style={{ padding: 'var(--cds-spacing-05) var(--cds-spacing-05) 0' }}
-      >
-        Fleet map
-      </h2>
-      <div
-        ref={mapEl}
-        style={{
-          flex: 1,
-          overflow: 'hidden',
-          margin: 'var(--cds-spacing-03)',
-          position: 'relative',
-        }}
-      />
-    </Tile>
+    <Layer>
+      <Tile className="cc-panel-map">
+        <h2
+          className="cc-panel-heading"
+          style={{ padding: 'var(--cds-spacing-05) var(--cds-spacing-05) 0' }}
+        >
+          Fleet map
+        </h2>
+        <div
+          ref={mapEl}
+          style={{
+            flex: 1,
+            overflow: 'hidden',
+            margin: 'var(--cds-spacing-03)',
+            position: 'relative',
+          }}
+        />
+      </Tile>
+    </Layer>
   )
 }
