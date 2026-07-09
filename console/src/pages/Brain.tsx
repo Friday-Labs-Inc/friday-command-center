@@ -1,11 +1,13 @@
 // Brain — configure the Hermes rover AI.
-// Local React state only; no backend calls today.
-// Save / deploy fire a ToastNotification: "brain-config API pending (OS-side wiring)".
+// SOUL.md is loaded from and persisted to the Core Hub (via the os-control agent);
+// model + tools stay local UI until the brain runtime is deployed.
 
-import { useState, useCallback } from 'react'
-import { Button, Dropdown, Tag, TextArea, Toggle, ToastNotification } from '@carbon/react'
+import { useState, useCallback, useEffect } from 'react'
+import { Button, Dropdown, Tag, TextArea, Toggle, ToastNotification, SkeletonText } from '@carbon/react'
 import { Bot, Save } from '@carbon/icons-react'
+import { useAsync } from '../lib/useAsync'
 import { ConfigCard } from '../components/ConfigCard'
+import * as api from '../lib/api'
 
 // ── SOUL.md default (realistic excerpt) ──────────────────────────────────────
 
@@ -55,17 +57,39 @@ const TOOLS: Array<{ id: string; name: string; meta: string }> = [
 
 const MODELS = ['MiniMax-M3', 'MiniMax-M2.7-highspeed']
 
+type Toast = { kind: 'success' | 'error'; title: string; subtitle: string }
+
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export function Brain() {
   const [model, setModel] = useState('MiniMax-M3')
-  const [soul,  setSoul]  = useState(SOUL_DEFAULT)
-  const [toast, setToast] = useState(false)
+  const soulDoc = useAsync(() => api.brainSoul(), [])
+  const [soul, setSoul] = useState(SOUL_DEFAULT)
+  const [soulLoaded, setSoulLoaded] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [toast, setToast] = useState<Toast | null>(null)
 
-  const handleSave = useCallback(() => {
-    setToast(true)
-    setTimeout(() => setToast(false), 7000)
-  }, [])
+  // Populate the editor once, from the Core Hub (fall back to the template).
+  useEffect(() => {
+    if (soulDoc.data && !soulLoaded) {
+      setSoul(soulDoc.data.exists && soulDoc.data.content ? soulDoc.data.content : SOUL_DEFAULT)
+      setSoulLoaded(true)
+    }
+  }, [soulDoc.data, soulLoaded])
+
+  const handleSave = useCallback(async () => {
+    setSaving(true)
+    try {
+      const res = await api.saveBrainSoul(soul)
+      setToast({ kind: 'success', title: 'SOUL.md saved',
+        subtitle: `${res.bytes} bytes → ${res.path} · the deployed brain reads this` })
+    } catch (e) {
+      setToast({ kind: 'error', title: 'Save failed',
+        subtitle: e instanceof Error ? e.message : String(e) })
+    } finally {
+      setSaving(false)
+    }
+  }, [soul])
 
   return (
     <div className="cc-page">
@@ -74,11 +98,12 @@ export function Brain() {
       {toast && (
         <div style={{ position: 'fixed', top: '3.75rem', right: '1.5rem', zIndex: 9000 }}>
           <ToastNotification
-            kind="info"
-            title="brain-config API pending"
-            subtitle="OS-side wiring required — context will persist once the brain config endpoint is wired."
-            timeout={7000}
-            onCloseButtonClick={() => setToast(false)}
+            kind={toast.kind}
+            lowContrast
+            title={toast.title}
+            subtitle={toast.subtitle}
+            timeout={6000}
+            onCloseButtonClick={() => setToast(null)}
           />
         </div>
       )}
@@ -184,21 +209,40 @@ export function Brain() {
           <h2 className="cc-section__title">Zero-day context (SOUL.md)</h2>
           <span className="cc-section__meta">identity · body · safety hierarchy</span>
         </div>
-        <ConfigCard status="warn">
+        <ConfigCard status={soulDoc.error ? 'err' : soulLoaded ? 'ok' : 'warn'}>
           <div className="cc-card__body">
-            <TextArea
-              id="brain-soul-md"
-              labelText="SOUL.md"
-              rows={10}
-              value={soul}
-              onChange={(e) => setSoul(e.currentTarget.value)}
-            />
+            {soulDoc.loading && !soulLoaded ? (
+              <SkeletonText paragraph lineCount={8} />
+            ) : (
+              <TextArea
+                id="brain-soul-md"
+                labelText="SOUL.md"
+                helperText={
+                  soulDoc.error
+                    ? 'Core Hub unreachable — showing the template; save is disabled'
+                    : soulDoc.data?.exists
+                      ? 'Loaded from the Core Hub'
+                      : 'Not yet saved to the Core Hub — this is the template'
+                }
+                rows={12}
+                value={soul}
+                onChange={(e) => setSoul(e.currentTarget.value)}
+              />
+            )}
           </div>
           <div className="cc-card__foot">
-            <Button renderIcon={Save} onClick={handleSave}>
-              Save context
+            <Button
+              renderIcon={Save}
+              onClick={handleSave}
+              disabled={saving || !!soulDoc.error || (soulDoc.loading && !soulLoaded)}
+            >
+              {saving ? 'Saving…' : 'Save context'}
             </Button>
-            <span className="cc-card__meta">brain-config API pending — OS-side wiring required</span>
+            <span className="cc-card__meta">
+              {soulDoc.error
+                ? 'os-control agent unreachable'
+                : 'persists to /var/lib/friday-brain/SOUL.md · read by the deployed brain'}
+            </span>
           </div>
         </ConfigCard>
       </section>
