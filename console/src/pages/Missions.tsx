@@ -1,12 +1,12 @@
-// Missions — plan, approve, and track rover missions.
-// Single-file rule: only imports from shared modules (lib/, components/).
+// Missions — plan, approve, and assign rover missions.
+// Redesigned to the cc-* design-system DNA (matches Overview.tsx structure).
+// All business logic preserved from the previous version; only the layout
+// shell has changed: cc-pagehead → cc-section → cc-grid / DataTablePanel.
 
 import { useState } from 'react'
 import {
   Button,
-  Column,
   ComposedModal,
-  Grid,
   InlineLoading,
   InlineNotification,
   Layer,
@@ -16,17 +16,18 @@ import {
   NumberInput,
   Select,
   SelectItem,
-  StructuredListWrapper,
+  SkeletonText,
   StructuredListBody,
   StructuredListCell,
   StructuredListHead,
   StructuredListRow,
+  StructuredListWrapper,
   TextArea,
   TextInput,
   ToastNotification,
 } from '@carbon/react'
 import { Add, TrashCan } from '@carbon/icons-react'
-import { PageHeader } from '../components/PageHeader'
+import { ConfigCard } from '../components/ConfigCard'
 import { DataTablePanel } from '../components/DataTablePanel'
 import { StatusTag } from '../components/StatusTag'
 import { useAsync } from '../lib/useAsync'
@@ -70,6 +71,12 @@ export function Missions() {
   // ── Data fetches ──────────────────────────────────────────────────────────────
   const missionsState = useAsync(() => api.missions(), [])
   const roversState   = useAsync(() => api.rovers(),   [])
+
+  // ── Derived summary counts ────────────────────────────────────────────────────
+  const allMissions  = missionsState.data ?? []
+  const activeMissions    = allMissions.filter(m => m.status === 'Active')
+  const pendingMissions   = allMissions.filter(m => m.status === 'Pending' || m.status === 'Draft')
+  const completedMissions = allMissions.filter(m => m.status === 'Completed')
 
   // ── Create form state ─────────────────────────────────────────────────────────
   const [createOpen,   setCreateOpen]   = useState(false)
@@ -173,7 +180,7 @@ export function Missions() {
 
   // ── Table row mapping ─────────────────────────────────────────────────────────
 
-  const tableRows = (missionsState.data ?? []).map(m => ({
+  const tableRows = allMissions.map(m => ({
     id:          m.name,
     title:       m.title,
     rover:       m.rover,
@@ -186,50 +193,92 @@ export function Missions() {
 
   return (
     <div className="cc-page">
-      <PageHeader
-        title="Missions"
-        description="Plan, approve, and track rover missions."
-        breadcrumbs={[
-          { label: 'Friday Command Center', href: '/' },
-          { label: 'Missions' },
-        ]}
-      />
 
-      {/* ── Fetch error banner ───────────────────────────────────────────────── */}
+      {/* ── Page header ──────────────────────────────────────────────────────── */}
+      <header className="cc-pagehead">
+        <p className="cc-pagehead__eyebrow">Autonomy</p>
+        <div className="cc-pagehead__row">
+          <div>
+            <h1 className="cc-pagehead__title">Missions</h1>
+            <p className="cc-pagehead__sub">Plan, approve, and assign rover missions.</p>
+          </div>
+          <Button kind="primary" renderIcon={Add} onClick={openCreate}>
+            New mission
+          </Button>
+        </div>
+      </header>
+
+      {/* ── Fetch error ───────────────────────────────────────────────────────── */}
       {missionsState.error && !missionsState.loading && (
-        <Grid>
-          <Column sm={4} md={8} lg={16}>
-            <div style={{ marginBottom: 'var(--cds-spacing-05)' }}>
-              <InlineNotification
-                kind="error"
-                title="Could not load missions"
-                subtitle={missionsState.error.message}
-                hideCloseButton
-              />
-            </div>
-          </Column>
-        </Grid>
+        <div style={{ marginBottom: 'var(--cds-spacing-06)' }}>
+          <InlineNotification
+            kind="error"
+            title="Could not load missions"
+            subtitle={missionsState.error.message}
+            hideCloseButton
+          />
+        </div>
       )}
 
-      {/* ── Missions table ───────────────────────────────────────────────────── */}
-      <Grid>
-        <Column sm={4} md={8} lg={16}>
-          <DataTablePanel
-            title="Missions"
-            description="All missions across the fleet. Click a row to view waypoints and payload."
-            headers={HEADERS}
-            rows={tableRows}
-            loading={missionsState.loading}
-            searchable
-            onRowClick={openDetail}
-            toolbarActions={
-              <Button kind="primary" renderIcon={Add} onClick={openCreate}>
-                New mission
-              </Button>
-            }
-          />
-        </Column>
-      </Grid>
+      {/* ── At a glance ───────────────────────────────────────────────────────── */}
+      <section className="cc-section">
+        <div className="cc-section__head">
+          <h2 className="cc-section__title">At a glance</h2>
+          <span className="cc-section__meta">
+            {missionsState.loading ? '—' : `${allMissions.length} total`}
+          </span>
+        </div>
+        <div className="cc-grid cc-grid--4">
+          <ConfigCard status={allMissions.length > 0 ? 'ok' : 'off'}>
+            <p className="cc-card__eyebrow">Total</p>
+            {missionsState.loading
+              ? <SkeletonText heading width="40%" />
+              : <p className="cc-card__metric">{allMissions.length}</p>}
+            <p className="cc-card__meta">missions across the fleet</p>
+          </ConfigCard>
+
+          <ConfigCard status={activeMissions.length > 0 ? 'ok' : 'off'}>
+            <p className="cc-card__eyebrow">Active</p>
+            {missionsState.loading
+              ? <SkeletonText heading width="40%" />
+              : <p className="cc-card__metric">{activeMissions.length}</p>}
+            <p className="cc-card__meta">currently executing</p>
+          </ConfigCard>
+
+          <ConfigCard status={pendingMissions.length > 0 ? 'warn' : 'off'}>
+            <p className="cc-card__eyebrow">Awaiting approval</p>
+            {missionsState.loading
+              ? <SkeletonText heading width="40%" />
+              : <p className="cc-card__metric">{pendingMissions.length}</p>}
+            <p className="cc-card__meta">pending or draft</p>
+          </ConfigCard>
+
+          <ConfigCard status={completedMissions.length > 0 ? 'ok' : 'off'}>
+            <p className="cc-card__eyebrow">Completed</p>
+            {missionsState.loading
+              ? <SkeletonText heading width="40%" />
+              : <p className="cc-card__metric">{completedMissions.length}</p>}
+            <p className="cc-card__meta">finished runs</p>
+          </ConfigCard>
+        </div>
+      </section>
+
+      {/* ── All missions table ────────────────────────────────────────────────── */}
+      <section className="cc-section">
+        <div className="cc-section__head">
+          <h2 className="cc-section__title">All missions</h2>
+          <span className="cc-section__meta">Click a row to view waypoints and payload</span>
+        </div>
+        <DataTablePanel
+          title="Missions"
+          description="All missions across the fleet."
+          headers={HEADERS}
+          rows={tableRows}
+          loading={missionsState.loading}
+          searchable
+          onRowClick={openDetail}
+        />
+      </section>
 
       {/* ════════════════════════════════════════════════════════════════════════
           Create mission modal

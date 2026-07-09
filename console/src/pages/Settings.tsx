@@ -1,249 +1,187 @@
 // Settings — read-only view of Command Center protocol and broker configuration.
-// Fetches settings() singleton from the control-plane gateway and presents
-// fields grouped by concern. No mutation endpoint exists; the InlineNotification
-// makes the read-only nature explicit.
+// Redesigned to the cc-* design-system DNA (Overview pattern):
+//   cc-pagehead header · cc-section + cc-grid + ConfigCard · cc-kv rows.
 
-import {
-  Column,
-  Grid,
-  InlineNotification,
-  Layer,
-  StructuredListBody,
-  StructuredListCell,
-  StructuredListRow,
-  StructuredListWrapper,
-  Tile,
-} from '@carbon/react'
-import { Wifi } from '@carbon/icons-react'
-
-import * as api from '../lib/api'
+import { Tag, InlineNotification, SkeletonText } from '@carbon/react'
+import { Settings as SettingsIcon, GatewayApi, Wifi } from '@carbon/icons-react'
 import { useAsync } from '../lib/useAsync'
 import { useLiveStore } from '../lib/store'
-import { PageHeader } from '../components/PageHeader'
-import { StatusTag } from '../components/StatusTag'
+import { ConfigCard, type CardStatus } from '../components/ConfigCard'
+import * as api from '../lib/api'
 
-// ── Field metadata ────────────────────────────────────────────────────────────
-
-interface FieldDef {
-  key: keyof api.Settings
-  label: string
-  unit: string
-  /** Render value in a monospaced face (hostnames, ports). */
-  mono?: boolean
+function Dot({ status }: { status: CardStatus }) {
+  const cls = {
+    ok: 'cc-dot--ok',
+    warn: 'cc-dot--warn',
+    err: 'cc-dot--err',
+    off: 'cc-dot--off',
+  }[status]
+  return <span className={`cc-dot ${cls}`} aria-hidden="true" />
 }
-
-const GROUPS: Array<{ heading: string; fields: FieldDef[] }> = [
-  {
-    heading: 'Protocol',
-    fields: [
-      { key: 'protocol_major', label: 'Protocol version', unit: 'major revision' },
-    ],
-  },
-  {
-    heading: 'Message broker',
-    fields: [
-      { key: 'broker_host', label: 'Broker host', unit: 'hostname', mono: true },
-      { key: 'broker_port', label: 'Broker port', unit: 'TCP port', mono: true },
-    ],
-  },
-  {
-    heading: 'Timing',
-    fields: [
-      { key: 'command_expiry_s',          label: 'Command expiry',         unit: 's' },
-      { key: 'clock_skew_tolerance_s',    label: 'Clock skew tolerance',   unit: 's' },
-      { key: 'default_authority_lease_s', label: 'Authority lease',        unit: 's' },
-    ],
-  },
-]
-
-// ── FieldRow ──────────────────────────────────────────────────────────────────
-
-interface FieldRowProps {
-  field: FieldDef
-  data: api.Settings | null
-  loading: boolean
-}
-
-function FieldRow({ field, data, loading }: FieldRowProps) {
-  const placeholder = loading || data === null
-  const value = placeholder ? '—' : String(data[field.key])
-
-  return (
-    <StructuredListRow>
-      <StructuredListCell noWrap>
-        <span className="st-label">{field.label}</span>
-      </StructuredListCell>
-      <StructuredListCell>
-        <span
-          className={placeholder ? 'st-value-ph' : 'st-value'}
-          style={
-            field.mono
-              ? { fontFamily: '"IBM Plex Mono", "Courier New", monospace', fontSize: '0.8125rem' }
-              : undefined
-          }
-        >
-          {value}
-        </span>
-      </StructuredListCell>
-      <StructuredListCell noWrap>
-        <span className="st-unit">{field.unit}</span>
-      </StructuredListCell>
-    </StructuredListRow>
-  )
-}
-
-// ── Page ──────────────────────────────────────────────────────────────────────
 
 export function Settings() {
   const { data, loading, error } = useAsync(() => api.settings(), [])
-  const live = useLiveStore()
+  const { connected } = useLiveStore()
 
   const gatewayOrigin = typeof window !== 'undefined' ? window.location.origin : '—'
 
+  // Derive a single card status for the two data cards.
+  // loading → off (not yet known); error → err; data present → ok.
+  const dataStatus: CardStatus = loading ? 'off' : error ? 'err' : 'ok'
+
   return (
     <div className="cc-page">
-      <style>{`
-        .st-label {
-          color: var(--cds-text-secondary);
-          font-size: 0.875rem;
-        }
-        .st-value {
-          color: var(--cds-text-primary);
-          font-variant-numeric: tabular-nums;
-        }
-        .st-value-ph {
-          color: var(--cds-text-placeholder);
-        }
-        .st-unit {
-          color: var(--cds-text-secondary);
-          font-size: 0.75rem;
-          letter-spacing: 0.02em;
-        }
-        .st-group {
-          margin-bottom: var(--cds-spacing-06);
-        }
-        .st-group:last-child {
-          margin-bottom: 0;
-        }
-      `}</style>
 
-      <PageHeader
-        title="Settings"
-        description="Command Center protocol and broker configuration."
-      />
-
-      <Grid>
-        {/* ── Read-only info banner ─────────────────────────────────────── */}
-        <Column sm={4} md={8} lg={16}>
-          <div style={{ marginBottom: 'var(--cds-spacing-05)' }}>
-            <InlineNotification
-              kind="info"
-              title="Read-only — "
-              subtitle="Settings are managed in the control plane (Frappe). This is a read-only view."
-              lowContrast
-              hideCloseButton
-            />
+      {/* ── Page header ───────────────────────────────────────────────────── */}
+      <header className="cc-pagehead">
+        <p className="cc-pagehead__eyebrow">System</p>
+        <div className="cc-pagehead__row">
+          <div>
+            <h1 className="cc-pagehead__title">Command Center settings</h1>
+            <p className="cc-pagehead__sub">
+              Protocol, broker, and timing for the signed command boundary.
+            </p>
           </div>
-        </Column>
+          <Tag type={connected ? 'green' : 'gray'} size="md">
+            <Dot status={connected ? 'ok' : 'off'} />
+            {connected ? 'Command link live' : 'Command link offline'}
+          </Tag>
+        </div>
+      </header>
 
-        {/* ── Fetch error ───────────────────────────────────────────────── */}
-        {error && (
-          <Column sm={4} md={8} lg={16}>
-            <div style={{ marginBottom: 'var(--cds-spacing-05)' }}>
-              <InlineNotification
-                kind="error"
-                title="Could not load settings — "
-                subtitle={error.message}
-                lowContrast
-              />
+      {/* ── Read-only banner ──────────────────────────────────────────────── */}
+      <div style={{ marginBottom: 'var(--cds-spacing-06)' }}>
+        <InlineNotification
+          lowContrast
+          hideCloseButton
+          kind="info"
+          title="Read-only"
+          subtitle="Managed in the control plane (Frappe). Edit there."
+        />
+      </div>
+
+      {/* ── Fetch error ───────────────────────────────────────────────────── */}
+      {error && (
+        <div style={{ marginBottom: 'var(--cds-spacing-06)' }}>
+          <InlineNotification
+            kind="error"
+            title="Could not load settings — "
+            subtitle={error.message}
+            lowContrast
+          />
+        </div>
+      )}
+
+      {/* ── Protocol & broker ─────────────────────────────────────────────── */}
+      <section className="cc-section">
+        <div className="cc-section__head">
+          <h2 className="cc-section__title">Protocol &amp; broker</h2>
+          <span className="cc-section__meta">read-only · managed in Frappe</span>
+        </div>
+        <div className="cc-grid cc-grid--2">
+
+          {/* Card 1 — Wire protocol */}
+          <ConfigCard status={dataStatus}>
+            <div className="cc-card__head">
+              <div>
+                <p className="cc-card__eyebrow">Command envelope</p>
+                <h3 className="cc-card__title">Wire protocol</h3>
+              </div>
+              <SettingsIcon size={20} className="cc-card__icon" />
             </div>
-          </Column>
-        )}
-
-        {/* ── Settings structured list ──────────────────────────────────── */}
-        <Column sm={4} md={5} lg={10}>
-          <div style={{ marginTop: 'var(--cds-spacing-04)' }}>
-            <Layer>
-              <Tile>
-                {GROUPS.map(group => (
-                  <div key={group.heading} className="st-group">
-                    <p className="cc-panel-heading">{group.heading}</p>
-                    <StructuredListWrapper isCondensed>
-                      <StructuredListBody>
-                        {group.fields.map(field => (
-                          <FieldRow
-                            key={field.key}
-                            field={field}
-                            data={data}
-                            loading={loading}
-                          />
-                        ))}
-                      </StructuredListBody>
-                    </StructuredListWrapper>
+            <div className="cc-card__body">
+              {loading ? (
+                <SkeletonText paragraph lineCount={4} />
+              ) : (
+                <>
+                  <div className="cc-kv">
+                    <span className="cc-kv__k">Protocol version</span>
+                    <span className="cc-kv__v">{data?.protocol_major}</span>
                   </div>
-                ))}
-              </Tile>
-            </Layer>
-          </div>
-        </Column>
+                  <div className="cc-kv">
+                    <span className="cc-kv__k">Command expiry</span>
+                    <span className="cc-kv__v">{data?.command_expiry_s} s</span>
+                  </div>
+                  <div className="cc-kv">
+                    <span className="cc-kv__k">Clock skew tolerance</span>
+                    <span className="cc-kv__v">{data?.clock_skew_tolerance_s} s</span>
+                  </div>
+                  <div className="cc-kv">
+                    <span className="cc-kv__k">Authority lease</span>
+                    <span className="cc-kv__v">{data?.default_authority_lease_s} s</span>
+                  </div>
+                </>
+              )}
+            </div>
+          </ConfigCard>
 
-        {/* ── Connection tile ───────────────────────────────────────────── */}
-        <Column sm={4} md={3} lg={6}>
-          <div style={{ marginTop: 'var(--cds-spacing-04)' }}>
-            <Layer>
-              <Tile>
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 'var(--cds-spacing-02)',
-                    marginBottom: 'var(--cds-spacing-04)',
-                  }}
-                >
-                  <Wifi size={14} style={{ color: 'var(--cds-text-secondary)' }} />
-                  <p className="cc-panel-heading" style={{ margin: 0 }}>
-                    Connection
-                  </p>
-                </div>
+          {/* Card 2 — Broker */}
+          <ConfigCard status={dataStatus}>
+            <div className="cc-card__head">
+              <div>
+                <p className="cc-card__eyebrow">Message broker</p>
+                <h3 className="cc-card__title">Broker</h3>
+              </div>
+              <GatewayApi size={20} className="cc-card__icon" />
+            </div>
+            <div className="cc-card__body">
+              {loading ? (
+                <SkeletonText paragraph lineCount={3} />
+              ) : (
+                <>
+                  <div className="cc-kv">
+                    <span className="cc-kv__k">Host</span>
+                    <span className="cc-kv__v"><code>{data?.broker_host}</code></span>
+                  </div>
+                  <div className="cc-kv">
+                    <span className="cc-kv__k">Port</span>
+                    <span className="cc-kv__v">{data?.broker_port}</span>
+                  </div>
+                  <div className="cc-kv">
+                    <span className="cc-kv__k">Transport</span>
+                    <span className="cc-kv__v">mTLS · EMQX</span>
+                  </div>
+                </>
+              )}
+            </div>
+          </ConfigCard>
 
-                <StructuredListWrapper isCondensed>
-                  <StructuredListBody>
-                    <StructuredListRow>
-                      <StructuredListCell noWrap>
-                        <span className="st-label">Gateway</span>
-                      </StructuredListCell>
-                      <StructuredListCell>
-                        <span
-                          style={{
-                            fontFamily: '"IBM Plex Mono", "Courier New", monospace',
-                            fontSize: '0.8125rem',
-                            color: 'var(--cds-text-primary)',
-                            wordBreak: 'break-all',
-                          }}
-                        >
-                          {gatewayOrigin}
-                        </span>
-                      </StructuredListCell>
-                    </StructuredListRow>
+        </div>
+      </section>
 
-                    <StructuredListRow>
-                      <StructuredListCell noWrap>
-                        <span className="st-label">WebSocket</span>
-                      </StructuredListCell>
-                      <StructuredListCell>
-                        <StatusTag
-                          status={live.connected ? 'online' : 'offline'}
-                          size="sm"
-                        />
-                      </StructuredListCell>
-                    </StructuredListRow>
-                  </StructuredListBody>
-                </StructuredListWrapper>
-              </Tile>
-            </Layer>
-          </div>
-        </Column>
-      </Grid>
+      {/* ── Connection ────────────────────────────────────────────────────── */}
+      <section className="cc-section">
+        <div className="cc-section__head">
+          <h2 className="cc-section__title">Connection</h2>
+          <span className="cc-section__meta">live WebSocket channel</span>
+        </div>
+        <div className="cc-grid cc-grid--2">
+          <ConfigCard status={connected ? 'ok' : 'off'}>
+            <div className="cc-card__head">
+              <div>
+                <p className="cc-card__eyebrow">Live channel</p>
+                <h3 className="cc-card__title">Command link</h3>
+              </div>
+              <Wifi size={20} className="cc-card__icon" />
+            </div>
+            <div className="cc-card__body">
+              <div className="cc-kv">
+                <span className="cc-kv__k">Command link</span>
+                <span className="cc-kv__v">{connected ? 'Live' : 'Off'}</span>
+              </div>
+              <div className="cc-kv">
+                <span className="cc-kv__k">Gateway origin</span>
+                <span className="cc-kv__v"><code>{gatewayOrigin}</code></span>
+              </div>
+              <div className="cc-kv">
+                <span className="cc-kv__k">Wire format</span>
+                <span className="cc-kv__v">CBOR · Ed25519-signed</span>
+              </div>
+            </div>
+          </ConfigCard>
+        </div>
+      </section>
+
     </div>
   )
 }
