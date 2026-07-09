@@ -1,69 +1,96 @@
-// System — compute-node inventory and OS service status for the Mark 1 stack.
-// Three physical nodes (Core Hub, Telemetry Gateway, Research Deck) with live
-// service rows derived from the rover heartbeat; network topology below.
+// System — compute-node inventory and OS service control for the Mark 1 stack.
+// Core Hub shows LIVE systemd status from the os-control agent and lets the
+// operator start/stop/restart the allowlisted units. Telemetry Gateway and
+// Research Deck have no agent yet, so their rows are static placeholders.
 
-import { Button, InlineNotification, SkeletonText } from '@carbon/react'
+import { useState } from 'react'
+import {
+  Button, InlineNotification, SkeletonText, ToastNotification,
+  OverflowMenu, OverflowMenuItem,
+} from '@carbon/react'
 import { Chip, Satellite, Microscope, Renew, Network_3, Router } from '@carbon/icons-react'
 import { useAsync } from '../lib/useAsync'
 import { ConfigCard, type CardStatus } from '../components/ConfigCard'
 import * as api from '../lib/api'
+import type { SystemService, ServiceAction } from '../lib/api'
 
-// ── Local helpers ─────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-type DotStatus = 'ok' | 'off'
-
-function Dot({ status }: { status: DotStatus }) {
+function Dot({ status }: { status: CardStatus }) {
   return <span className={`cc-dot cc-dot--${status}`} aria-hidden="true" />
 }
 
-interface ServiceRow {
-  label: string
-  status: DotStatus
+const PAST: Record<ServiceAction, string> = {
+  start: 'started', stop: 'stopped', restart: 'restarted',
 }
 
-function ServiceRows({ services }: { services: ServiceRow[] }) {
+const unitLabel = (name: string) => name.replace(/\.service$/, '')
+
+// systemd ActiveState → dot colour
+function svcDot(active: string): CardStatus {
+  if (active === 'active') return 'ok'
+  if (active === 'failed') return 'err'
+  if (active === 'activating' || active === 'deactivating' || active === 'reloading') return 'warn'
+  return 'off'
+}
+
+// roll the units up into a single node status
+function nodeStatus(services: SystemService[] | null): CardStatus {
+  if (!services || services.length === 0) return 'off'
+  if (services.some((s) => s.active === 'failed')) return 'err'
+  if (services.every((s) => s.active === 'active')) return 'ok'
+  return 'warn'
+}
+
+interface StaticRow { label: string; status: CardStatus }
+
+function StaticRows({ rows }: { rows: StaticRow[] }) {
   return (
     <>
-      {services.map(({ label, status }) => (
+      {rows.map(({ label, status }) => (
         <div key={label} className="cc-kv">
           <span className="cc-kv__k">{label}</span>
-          <span className="cc-kv__v">
-            <Dot status={status} />
-            {status === 'ok' ? 'active' : 'inactive'}
-          </span>
+          <span className="cc-kv__v"><Dot status={status} />{status === 'ok' ? 'active' : 'inactive'}</span>
         </div>
       ))}
     </>
   )
 }
 
+type Toast = { kind: 'success' | 'error'; title: string; subtitle: string }
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export function System() {
-  const rovers = useAsync(() => api.rovers(), [])
+  const services = useAsync(() => api.systemServices(), [])
+  const [busy, setBusy] = useState<string | null>(null)
+  const [toast, setToast] = useState<Toast | null>(null)
 
-  const rover = rovers.data?.[0]
-  const roverOnline = !!rover && rover.status === 'Active'
-  const coreStatus: CardStatus = rovers.loading ? 'off' : roverOnline ? 'ok' : 'off'
-  const svc: DotStatus = roverOnline ? 'ok' : 'off'
+  async function handleAction(name: string, action: ServiceAction) {
+    setBusy(name)
+    try {
+      const res = await api.systemServiceAction(name, action)
+      setToast(res.ok
+        ? { kind: 'success', title: `${unitLabel(name)} ${PAST[action]}`, subtitle: `now ${res.active} · ${res.sub}` }
+        : { kind: 'error', title: `${action} failed`, subtitle: res.stderr || 'see agent logs on the Core Hub' })
+      services.reload()
+    } catch (e) {
+      setToast({ kind: 'error', title: `${action} failed`, subtitle: e instanceof Error ? e.message : String(e) })
+    } finally {
+      setBusy(null)
+    }
+  }
 
-  // Service manifests for each node. Core Hub reflects live rover data;
-  // the other two nodes are not yet provisioned.
-  const coreServices: ServiceRow[] = [
-    { label: 'friday-core-os.target', status: svc },
-    { label: 'module-registry', status: svc },
-    { label: 'mosquitto-internal', status: svc },
-    { label: 'micro-ros-agent-gpio', status: svc },
-    { label: 'micro-ros-agent-udp', status: svc },
-  ]
+  const coreStatus = services.loading && !services.data
+    ? 'off'
+    : services.error ? 'warn' : nodeStatus(services.data)
 
-  const telemetryServices: ServiceRow[] = [
+  const telemetryRows: StaticRow[] = [
     { label: 'mosquitto-relay', status: 'off' },
     { label: 'modem-manager', status: 'off' },
     { label: 'health-beacon', status: 'off' },
   ]
-
-  const researchServices: ServiceRow[] = [
+  const researchRows: StaticRow[] = [
     { label: 'friday-researchdeck-os.target', status: 'off' },
     { label: 'coral-inference', status: 'off' },
     { label: 'sensor-bridge', status: 'off' },
@@ -72,13 +99,28 @@ export function System() {
 
   return (
     <div className="cc-page">
+      {/* ── Action toast ──────────────────────────────────────────────────── */}
+      {toast && (
+        <div style={{ position: 'fixed', top: '3.75rem', right: '1.5rem', zIndex: 9000 }}>
+          <ToastNotification
+            kind={toast.kind}
+            lowContrast
+            title={toast.title}
+            subtitle={toast.subtitle}
+            timeout={6000}
+            onCloseButtonClick={() => setToast(null)}
+          />
+        </div>
+      )}
+
       <header className="cc-pagehead">
         <p className="cc-pagehead__eyebrow">System</p>
         <div className="cc-pagehead__row">
           <div>
             <h1 className="cc-pagehead__title">Compute nodes &amp; services</h1>
             <p className="cc-pagehead__sub">
-              The OS services on each node of the Mark 1 stack.
+              Live OS service control for the Mark 1 stack. Core Hub is wired to the
+              on-board control agent; start, stop and restart its services from here.
             </p>
           </div>
         </div>
@@ -91,18 +133,8 @@ export function System() {
           <span className="cc-section__meta">3 compute nodes</span>
         </div>
 
-        {rovers.error && (
-          <InlineNotification
-            kind="error"
-            lowContrast
-            hideCloseButton
-            title="Rover status unavailable"
-            subtitle={rovers.error.message}
-          />
-        )}
-
         <div className="cc-grid cc-grid--3">
-          {/* Core Hub — tracks live rover heartbeat */}
+          {/* Core Hub — LIVE via os-control agent */}
           <ConfigCard status={coreStatus}>
             <div className="cc-card__head">
               <div>
@@ -112,13 +144,54 @@ export function System() {
               <Chip size={20} className="cc-card__icon" />
             </div>
             <div className="cc-card__body">
-              {rovers.loading
-                ? <SkeletonText paragraph lineCount={5} />
-                : <ServiceRows services={coreServices} />}
+              {services.loading && !services.data ? (
+                <SkeletonText paragraph lineCount={5} />
+              ) : services.error ? (
+                <InlineNotification
+                  kind="warning"
+                  lowContrast
+                  hideCloseButton
+                  title="OS-control agent unreachable"
+                  subtitle={services.error.message}
+                />
+              ) : (
+                (services.data ?? []).map((svc) => (
+                  <div key={svc.name} className="cc-kv">
+                    <span className="cc-kv__k">{unitLabel(svc.name)}</span>
+                    <span
+                      className="cc-kv__v"
+                      style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', justifyContent: 'flex-end' }}
+                    >
+                      <Dot status={svcDot(svc.active)} />
+                      {svc.active}
+                      <OverflowMenu
+                        size="sm"
+                        flipped
+                        aria-label={`${unitLabel(svc.name)} actions`}
+                        disabled={busy === svc.name}
+                      >
+                        <OverflowMenuItem itemText="Restart" onClick={() => handleAction(svc.name, 'restart')} />
+                        <OverflowMenuItem itemText="Start" onClick={() => handleAction(svc.name, 'start')} />
+                        <OverflowMenuItem itemText="Stop" isDelete onClick={() => handleAction(svc.name, 'stop')} />
+                      </OverflowMenu>
+                    </span>
+                  </div>
+                ))
+              )}
             </div>
             <div className="cc-card__foot">
-              <Button size="sm" renderIcon={Renew} disabled>Restart</Button>
-              <span className="cc-card__meta">control API pending</span>
+              <Button
+                kind="ghost"
+                size="sm"
+                renderIcon={Renew}
+                onClick={() => services.reload()}
+                disabled={services.loading}
+              >
+                Refresh
+              </Button>
+              <span className="cc-card__meta">
+                {services.error ? 'agent offline' : 'live · os-control agent'}
+              </span>
             </div>
           </ConfigCard>
 
@@ -132,7 +205,7 @@ export function System() {
               <Satellite size={20} className="cc-card__icon" />
             </div>
             <div className="cc-card__body">
-              <ServiceRows services={telemetryServices} />
+              <StaticRows rows={telemetryRows} />
             </div>
             <div className="cc-card__foot">
               <Button size="sm" renderIcon={Renew} disabled>Restart</Button>
@@ -150,7 +223,7 @@ export function System() {
               <Microscope size={20} className="cc-card__icon" />
             </div>
             <div className="cc-card__body">
-              <ServiceRows services={researchServices} />
+              <StaticRows rows={researchRows} />
             </div>
             <div className="cc-card__foot">
               <Button size="sm" renderIcon={Renew} disabled>Restart</Button>

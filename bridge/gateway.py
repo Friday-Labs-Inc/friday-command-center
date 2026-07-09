@@ -36,6 +36,11 @@ BROKER_HOST = os.environ.get("MQTT_HOST", "127.0.0.1")
 BROKER_PORT = int(os.environ.get("MQTT_TLS_PORT", "8883"))
 DISPATCHER = os.environ.get("DISPATCHER_URL", "http://127.0.0.1:8091")
 
+# OS-control agent on the Core Hub (Pi). Bearer-token'd; allowlisted service control.
+# Unset in dev -> the /api/system/* routes report 503 (not configured) instead of failing.
+OS_CONTROL_URL = os.environ.get("OS_CONTROL_URL", "").rstrip("/")
+OS_CONTROL_TOKEN = os.environ.get("OS_CONTROL_TOKEN", "")
+
 _CP = None
 if os.environ.get("CP_BASE") and os.environ.get("CP_KEY") and os.environ.get("CP_SECRET"):
     _CP = ControlPlane(os.environ["CP_BASE"], os.environ["CP_KEY"], os.environ["CP_SECRET"])
@@ -243,6 +248,11 @@ class AckEventBody(BaseModel):
     name: str
 
 
+class ServiceActionBody(BaseModel):
+    name: str
+    action: str  # start | stop | restart
+
+
 # -- fleet --
 
 @app.get("/api/fleets")
@@ -361,6 +371,45 @@ async def api_ack_security_event(body: AckEventBody):
 async def api_settings():
     cp = _require_cp()
     return await asyncio.to_thread(cp.get_settings)
+
+
+# -- OS service control (Core Hub) --
+# Edge-proxy to the Pi os-control-agent. The gateway holds the bearer token; the
+# browser never sees it. The agent enforces the real guardrails (unit allowlist +
+# action allowlist); the checks here are fail-fast, not the security boundary.
+
+def _os_control_headers() -> dict:
+    return {"Authorization": f"Bearer {OS_CONTROL_TOKEN}"} if OS_CONTROL_TOKEN else {}
+
+
+@app.get("/api/system/services")
+async def api_system_services():
+    if not OS_CONTROL_URL:
+        raise HTTPException(503, "os-control agent not configured (set OS_CONTROL_URL)")
+    try:
+        async with httpx.AsyncClient(timeout=8) as client:
+            r = await client.get(f"{OS_CONTROL_URL}/services", headers=_os_control_headers())
+    except httpx.RequestError as exc:
+        raise HTTPException(502, f"os-control agent unreachable: {exc}")
+    return Response(content=r.content, status_code=r.status_code, media_type="application/json")
+
+
+@app.post("/api/system/service")
+async def api_system_service(body: ServiceActionBody):
+    if not OS_CONTROL_URL:
+        raise HTTPException(503, "os-control agent not configured (set OS_CONTROL_URL)")
+    if body.action not in {"start", "stop", "restart"}:
+        raise HTTPException(400, "action must be start|stop|restart")
+    try:
+        async with httpx.AsyncClient(timeout=25) as client:
+            r = await client.post(
+                f"{OS_CONTROL_URL}/service",
+                json={"name": body.name, "action": body.action},
+                headers=_os_control_headers(),
+            )
+    except httpx.RequestError as exc:
+        raise HTTPException(502, f"os-control agent unreachable: {exc}")
+    return Response(content=r.content, status_code=r.status_code, media_type="application/json")
 
 
 # ---- SPA serving (mounted LAST so it never shadows the routes above) ----
