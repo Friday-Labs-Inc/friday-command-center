@@ -1,0 +1,1072 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mark 1 — System Blueprint · Friday Labs</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;450;500;600&display=swap" rel="stylesheet">
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  }
+}
+</script>
+<style>
+  /* ================= IBM Carbon g100 tokens ================= */
+  :root {
+    --cds-background: #161616;
+    --cds-layer-01: #262626;
+    --cds-layer-02: #393939;
+    --cds-layer-accent: #525252;
+    --cds-border-subtle: #393939;
+    --cds-border-strong: #6f6f6f;
+    --cds-text-primary: #f4f4f4;
+    --cds-text-secondary: #c6c6c6;
+    --cds-text-helper: #8d8d8d;
+    --cds-text-inverse: #161616;
+    --cds-link: #78a9ff;
+    --cds-blue-60: #0f62fe;
+    --cds-blue-40: #4589ff;
+    --cds-teal-40: #08bdba;
+    --cds-purple-50: #a56eff;
+    --cds-magenta-50: #ee5396;
+    --cds-yellow-30: #f1c21b;
+    --cds-green-40: #42be65;
+    --cds-red-50: #fa4d56;
+    --cds-gray-70: #525252;
+    --font-sans: 'IBM Plex Sans', 'Helvetica Neue', Arial, sans-serif;
+    --font-mono: 'IBM Plex Mono', 'Menlo', monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 56px; }
+  body {
+    background: var(--cds-background);
+    color: var(--cds-text-primary);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection { background: var(--cds-blue-60); color: #fff; }
+
+  /* ================= UI shell header ================= */
+  .shell {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    height: 48px; display: flex; align-items: center;
+    background: var(--cds-background);
+    border-bottom: 1px solid var(--cds-border-subtle);
+    padding: 0 16px;
+  }
+  .shell .brand { font-size: 14px; letter-spacing: .1px; white-space: nowrap; }
+  .shell .brand b { font-weight: 600; }
+  .shell .brand span { font-weight: 300; color: var(--cds-text-secondary); }
+  .shell nav { margin-left: auto; display: flex; gap: 0; overflow-x: auto; }
+  .shell nav a {
+    color: var(--cds-text-secondary); text-decoration: none; font-size: 13px;
+    padding: 14px 12px; border-bottom: 3px solid transparent; white-space: nowrap;
+  }
+  .shell nav a:hover { color: var(--cds-text-primary); background: var(--cds-layer-01); }
+  .shell nav a.active { border-bottom-color: var(--cds-blue-60); color: var(--cds-text-primary); }
+
+  main { max-width: 1312px; margin: 0 auto; padding: 48px 16px 0; }
+
+  /* ================= hero ================= */
+  .hero { padding: 64px 0 48px; border-bottom: 1px solid var(--cds-border-subtle); }
+  .eyebrow { font-family: var(--font-mono); font-size: 12px; color: var(--cds-blue-40); letter-spacing: .32px; }
+  .hero h1 { font-size: 54px; font-weight: 300; line-height: 1.15; margin: 12px 0 8px; letter-spacing: 0; }
+  .hero h1 b { font-weight: 600; }
+  .hero p.sub { font-size: 16px; font-weight: 300; color: var(--cds-text-secondary); max-width: 640px; margin-bottom: 24px; }
+  .meta-row { display: flex; flex-wrap: wrap; gap: 32px; font-size: 12px; }
+  .meta-row .m label { display: block; color: var(--cds-text-helper); margin-bottom: 2px; }
+  .meta-row .m div { font-family: var(--font-mono); color: var(--cds-text-primary); }
+
+  .tag {
+    display: inline-block; font-size: 12px; line-height: 18px; padding: 0 8px;
+    border-radius: 24px; background: var(--cds-layer-02); color: var(--cds-text-primary);
+    margin: 2px 4px 2px 0; white-space: nowrap;
+  }
+  .tag.blue { background: #0043ce33; color: #78a9ff; }
+  .tag.teal { background: #08bdba26; color: #3ddbd9; }
+  .tag.purple { background: #8a3ffc33; color: #be95ff; }
+  .tag.magenta { background: #ee539626; color: #ff7eb6; }
+  .tag.yellow { background: #f1c21b26; color: #f1c21b; }
+  .tag.green { background: #42be6526; color: #6fdc8c; }
+  .tag.red { background: #fa4d5626; color: #ff8389; }
+  .tag.outline { background: transparent; border: 1px solid var(--cds-border-strong); }
+
+  /* ================= sections ================= */
+  section { padding: 56px 0; border-bottom: 1px solid var(--cds-border-subtle); }
+  .sec-label { font-family: var(--font-mono); font-size: 12px; color: var(--cds-text-helper); margin-bottom: 8px; }
+  section h2 { font-size: 32px; font-weight: 300; margin-bottom: 8px; }
+  section .lede { font-size: 15px; font-weight: 300; color: var(--cds-text-secondary); max-width: 720px; margin-bottom: 32px; }
+
+  /* stat strip */
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1px; background: var(--cds-border-subtle); border: 1px solid var(--cds-border-subtle); }
+  .stat { background: var(--cds-layer-01); padding: 16px; }
+  .stat .v { font-size: 28px; font-weight: 300; font-family: var(--font-sans); }
+  .stat .v small { font-size: 14px; color: var(--cds-text-helper); }
+  .stat .k { font-size: 12px; color: var(--cds-text-helper); margin-top: 4px; }
+
+  /* tiles */
+  .tiles { display: grid; gap: 1px; background: var(--cds-border-subtle); border: 1px solid var(--cds-border-subtle); }
+  .tiles.cols-2 { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+  .tile { background: var(--cds-layer-01); padding: 24px; }
+  .tile h3 { font-size: 18px; font-weight: 450; margin-bottom: 4px; display: flex; align-items: center; gap: 10px; }
+  .tile h3 .dot { width: 10px; height: 10px; flex: none; }
+  .tile .mono { font-family: var(--font-mono); font-size: 12px; color: var(--cds-text-helper); margin-bottom: 12px; }
+  .tile p { color: var(--cds-text-secondary); font-weight: 300; margin-bottom: 12px; }
+  .kv { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .kv td { padding: 6px 0; border-top: 1px solid var(--cds-border-subtle); vertical-align: top; }
+  .kv td:first-child { color: var(--cds-text-helper); width: 34%; padding-right: 12px; }
+  .kv td:last-child { color: var(--cds-text-secondary); }
+  .kv .mono2 { font-family: var(--font-mono); font-size: 12px; }
+
+  /* data table */
+  .dt-wrap { overflow-x: auto; border: 1px solid var(--cds-border-subtle); }
+  table.dt { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 640px; }
+  table.dt thead th {
+    text-align: left; font-weight: 600; font-size: 13px; padding: 12px 16px;
+    background: var(--cds-layer-02); border-bottom: 1px solid var(--cds-border-subtle); white-space: nowrap;
+  }
+  table.dt tbody td { padding: 11px 16px; border-bottom: 1px solid var(--cds-border-subtle); background: var(--cds-layer-01); color: var(--cds-text-secondary); vertical-align: top; }
+  table.dt tbody tr:last-child td { border-bottom: none; }
+  table.dt tbody tr:hover td { background: #333333; }
+  table.dt .mono2, .mono2 { font-family: var(--font-mono); font-size: 12px; }
+  table.dt td:first-child { color: var(--cds-text-primary); }
+
+  /* ================= 3D viewer ================= */
+  .viewer-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 1px; background: var(--cds-border-subtle); border: 1px solid var(--cds-border-subtle); }
+  @media (max-width: 900px) { .viewer-grid { grid-template-columns: 1fr; } }
+  .viewer-grid { align-items: start; }
+  .viewer { position: relative; background: var(--cds-layer-01); height: 640px; overflow: hidden; }
+  .viewer canvas { display: block; }
+  .viewer .labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+  .n-label {
+    pointer-events: auto; cursor: pointer;
+    font-family: var(--font-mono); font-size: 11px; letter-spacing: .3px;
+    padding: 2px 8px; background: #161616e6; border: 1px solid var(--cds-border-strong);
+    color: var(--cds-text-secondary); white-space: nowrap; user-select: none;
+  }
+  .n-label:hover, .n-label.sel { color: #fff; border-color: #fff; }
+  .n-label { transition: opacity .3s; }
+  .labels.compact .n-label:not(.sel) { opacity: 0; pointer-events: none; }
+  .n-label .st { margin-left: 7px; padding-left: 6px; border-left: 1px solid var(--cds-border-strong); font-size: 10px; letter-spacing: .5px; }
+  .sub-label { display: none; transform: translate(-50%, -100%); pointer-events: none; white-space: nowrap;
+    font: 500 9.5px/1.15 var(--font-mono); color: var(--cds-text-secondary);
+    background: rgba(20,20,20,.82); border: 1px solid var(--cds-border-subtle); border-radius: 3px; padding: 1px 5px; }
+  .sub-label.show { display: inline-flex; align-items: center; gap: 4px; }
+  .sub-label .sd { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+  .labels.compact .sub-label { display: none !important; }
+
+  /* ---- progress / build-status layer ---- */
+  .vlegend {
+    position: absolute; bottom: 12px; right: 16px; z-index: 5; display: flex; gap: 12px;
+    font-family: var(--font-mono); font-size: 10.5px; color: var(--cds-text-helper); pointer-events: none;
+  }
+  .vlegend span::before { content: ''; display: inline-block; width: 8px; height: 8px; margin-right: 5px; background: currentColor; }
+  .bar { height: 4px; background: var(--cds-layer-02); margin: 14px 0 6px; }
+  .bar i { display: block; height: 100%; }
+  .pcount { font-family: var(--font-mono); font-size: 11px; color: var(--cds-text-helper); }
+  .pnext { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--cds-border-subtle); font-size: 12.5px; color: var(--cds-text-secondary); }
+  .pnext b { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .5px; color: var(--cds-blue-40); font-weight: 500; margin-right: 6px; }
+  .pcard { cursor: pointer; }
+  .pcard:hover { background: #2c2c2c; }
+  ul.ms { list-style: none; }
+  ul.ms li { display: flex; gap: 8px; align-items: baseline; padding: 5px 0; border-top: 1px solid var(--cds-border-subtle); font-size: 12.5px; color: var(--cds-text-secondary); }
+  ul.ms li .tick { font-family: var(--font-mono); flex: none; color: var(--cds-green-40); }
+  ul.ms li.todo { color: var(--cds-text-helper); }
+  ul.ms li.todo .tick { color: var(--cds-gray-70); }
+  ul.ms li .proof { margin-left: auto; padding-left: 10px; flex: none; max-width: 45%; text-align: right; font-family: var(--font-mono); font-size: 10.5px; color: var(--cds-text-helper); }
+  .viewer-hud {
+    position: absolute; top: 0; left: 0; right: 0; display: flex; gap: 1px; z-index: 5;
+    background: var(--cds-border-subtle); border-bottom: 1px solid var(--cds-border-subtle);
+  }
+  .viewer-hud button {
+    font-family: var(--font-sans); font-size: 13px; color: var(--cds-text-secondary);
+    background: #161616; border: none; padding: 10px 16px; cursor: pointer;
+  }
+  .viewer-hud button:hover { background: var(--cds-layer-02); color: #fff; }
+  .viewer-hud button.on { color: #fff; box-shadow: inset 0 -3px 0 var(--cds-blue-60); }
+  .viewer-hud .spacer { flex: 1; background: #161616; }
+  .viewer .hint {
+    position: absolute; bottom: 12px; left: 16px; z-index: 5;
+    font-family: var(--font-mono); font-size: 11px; color: var(--cds-text-helper); pointer-events: none;
+  }
+  .viewer .fallback {
+    position: absolute; inset: 48px 0 0; display: none; align-items: center; justify-content: center;
+    text-align: center; padding: 32px; color: var(--cds-text-secondary); font-weight: 300;
+  }
+  .inspector { background: var(--cds-layer-01); padding: 24px; height: 640px; overflow-y: auto; }
+  .inspector .sec-label { margin-bottom: 16px; }
+  .inspector h3 { font-size: 20px; font-weight: 450; display: flex; align-items: center; gap: 10px; margin-bottom: 2px; }
+  .inspector h3 .dot { width: 12px; height: 12px; flex: none; }
+  .inspector .id { font-family: var(--font-mono); font-size: 12px; color: var(--cds-text-helper); margin-bottom: 16px; }
+  .inspector p { color: var(--cds-text-secondary); font-weight: 300; margin-bottom: 16px; font-size: 13px; }
+  .inspector .grp { font-size: 11px; letter-spacing: .32px; text-transform: uppercase; color: var(--cds-text-helper); margin: 16px 0 6px; }
+  .inspector ul { list-style: none; }
+  .inspector ul li { padding: 5px 0; border-top: 1px solid var(--cds-border-subtle); font-size: 12.5px; color: var(--cds-text-secondary); font-family: var(--font-mono); }
+  .inspector ul.subs li { display: flex; align-items: center; gap: 8px; }
+  .inspector ul.subs .sdot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+  .inspector ul.subs .stag { margin-left: auto; flex: none; font-size: 10px; text-transform: uppercase; letter-spacing: .4px; }
+
+  /* pipeline (security) */
+  .pipe { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; margin-bottom: 24px; }
+  .pipe .step {
+    flex: 1 1 130px; min-width: 130px; background: var(--cds-layer-01);
+    border: 1px solid var(--cds-border-subtle); border-left: 3px solid var(--cds-blue-60); padding: 12px;
+  }
+  .pipe .step .n { font-family: var(--font-mono); font-size: 11px; color: var(--cds-text-helper); }
+  .pipe .step .t { font-size: 13px; font-weight: 500; margin: 2px 0 4px; }
+  .pipe .step .r { font-family: var(--font-mono); font-size: 11px; color: var(--cds-red-50); }
+
+  /* flow (data flow steps) */
+  .flow { counter-reset: fs; border: 1px solid var(--cds-border-subtle); }
+  .flow .f { display: flex; gap: 16px; padding: 12px 16px; background: var(--cds-layer-01); border-bottom: 1px solid var(--cds-border-subtle); align-items: baseline; }
+  .flow .f:last-child { border-bottom: none; }
+  .flow .f::before { counter-increment: fs; content: counter(fs, decimal-leading-zero); font-family: var(--font-mono); font-size: 12px; color: var(--cds-text-helper); flex: none; }
+  .flow .f .who { font-family: var(--font-mono); font-size: 11px; flex: none; width: 90px; }
+  .flow .f .what { color: var(--cds-text-secondary); font-weight: 300; }
+
+  /* priority chain */
+  .chain { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .chain .c { background: var(--cds-layer-02); padding: 8px 14px; font-size: 13px; border: 1px solid var(--cds-border-subtle); }
+  .chain .c.hw { border-left: 3px solid var(--cds-red-50); }
+  .chain .gt { color: var(--cds-text-helper); font-family: var(--font-mono); }
+
+  .note {
+    border-left: 3px solid var(--cds-blue-60); background: var(--cds-layer-01);
+    padding: 16px; margin: 24px 0; color: var(--cds-text-secondary); font-weight: 300; max-width: 860px;
+  }
+  .note b { color: var(--cds-text-primary); font-weight: 500; }
+
+  h4.subhead { font-size: 16px; font-weight: 450; margin: 32px 0 12px; }
+  footer { padding: 40px 0 64px; color: var(--cds-text-helper); font-size: 12px; }
+  footer .mono2 { color: var(--cds-text-secondary); }
+  a { color: var(--cds-link); }
+  @media (max-width: 640px) { .hero h1 { font-size: 36px; } .shell nav { display: none; } }
+</style>
+</head>
+<body>
+
+<header class="shell">
+  <div class="brand"><b>Friday Labs</b> <span>· Mark 1 System Blueprint</span></div>
+  <nav id="topnav">
+    <a href="#overview">Overview</a>
+    <a href="#system3d">3D System</a>
+    <a href="#progress">Progress</a>
+    <a href="#modules">Modules</a>
+    <a href="#comms">Communication</a>
+    <a href="#security">Security</a>
+    <a href="#safety">Safety</a>
+    <a href="#ai">AI Harness</a>
+    <a href="#dataflow">Data Flow</a>
+  </nav>
+</header>
+
+<main>
+
+<div class="hero">
+  <div class="eyebrow">TECHNICAL SPECIFICATION · BLUEPRINT</div>
+  <h1><b>Mark 1</b> — distributed modular<br>rover architecture</h1>
+  <p class="sub">An offline-first, modular autonomous research rover. Five compute modules, three OS images,
+     three transport domains, one signed command boundary. Built for agriculture, forestry, environmental
+     research, and non-destructive surveillance — never weapons.</p>
+  <div class="meta-row">
+    <div class="m"><label>Document</label><div>MK1-BLUEPRINT-001</div></div>
+    <div class="m"><label>Source of truth</label><div>docs/architecture/*</div></div>
+    <div class="m"><label>Status</label><div><span class="tag green">Stage 1 · Gazebo sim verified</span></div></div>
+    <div class="m"><label>Platform</label><div><span class="tag outline">ROS 2 Jazzy</span> <span class="tag outline">Ubuntu 24.04</span> <span class="tag outline">Debian 12</span></div></div>
+  </div>
+</div>
+
+<!-- ================= 01 OVERVIEW ================= -->
+<section id="overview">
+  <div class="sec-label">01</div>
+  <h2>System overview</h2>
+  <p class="lede">Each major subsystem owns its own compute and control layer, so the rover never depends on
+     a single computer for everything. The Core Hub is the brain, not the bottleneck: heavy sensor work goes
+     to the Lab Deck, communication to the Telemetry Gateway, movement to the Locomotion Unit, and drone
+     operations to the Aerial Bay.</p>
+  <div class="stats">
+    <div class="stat"><div class="v">5</div><div class="k">compute modules</div></div>
+    <div class="stat"><div class="v">3</div><div class="k">OS images</div></div>
+    <div class="stat"><div class="v">3</div><div class="k">transport domains</div></div>
+    <div class="stat"><div class="v">100 <small>ms</small></div><div class="k">hardware safe-stop watchdog</div></div>
+    <div class="stat"><div class="v">Ed25519</div><div class="k">signed CBOR command envelopes</div></div>
+    <div class="stat"><div class="v">4</div><div class="k">autonomy levels (0–3)</div></div>
+  </div>
+  <div class="note"><b>Two non-negotiable decisions.</b> (1) The Core Hub must not process everything — it receives
+    processed outputs, never raw sensor firehoses. (2) The Telemetry Gateway is a <b>network boundary, not a robot
+    brain</b> — no ROS 2, no cryptographic keys, no robotics data processing. Just packet routing and radio failover.</div>
+</section>
+
+<!-- ================= 02 3D SYSTEM VIEW ================= -->
+<section id="system3d">
+  <div class="sec-label">02</div>
+  <h2>Interactive system view</h2>
+  <p class="lede">The full compute topology, exploded. Drag to orbit, scroll to zoom, click any board (or its
+     label) to inspect it. Moving pulses trace live data paths: signed envelopes on the external link,
+     MQTT on the internal bridge, micro-ROS on the USB spines, DDS to the Lab Deck.</p>
+  <div class="viewer-grid">
+    <div class="viewer" id="viewer">
+      <div class="viewer-hud">
+        <button id="btn-exploded" class="on">Exploded</button>
+        <button id="btn-assembled">Assembled</button>
+        <button id="btn-reset">Reset camera</button>
+        <button id="btn-rotate" class="on">Auto-rotate</button>
+        <div class="spacer"></div>
+      </div>
+      <div class="labels" id="labels"></div>
+      <div class="hint">drag · orbit&nbsp;&nbsp;scroll · zoom&nbsp;&nbsp;click · inspect</div>
+      <div class="vlegend" id="vlegend"></div>
+      <div class="fallback" id="fallback">
+        <div>
+          <p style="margin-bottom:8px">The 3D system view needs internet access to load the Three.js library (CDN).</p>
+          <p class="mono2" style="color:var(--cds-text-helper)">Open this file in a browser with network access — the rest of the blueprint works offline.</p>
+        </div>
+      </div>
+    </div>
+    <aside class="inspector" id="inspector"></aside>
+  </div>
+</section>
+
+<!-- ================= 03 BUILD STATUS ================= -->
+<section id="progress">
+  <div class="sec-label">03</div>
+  <h2>Build status</h2>
+  <p class="lede">The live progress layer. One file — <span class="mono2">progress.js</span>, versioned next to this
+     page — drives everything here and the stage colors in the 3D view above. Each module climbs the ladder
+     <span class="mono2">spec → sim → bench → field</span>, every finished milestone carries its proof, and each
+     module names exactly one next action. Click a card to inspect it in 3D.</p>
+  <div class="stats" id="prog-stats"></div>
+  <div class="tiles cols-2" id="prog-grid" style="margin-top:24px"></div>
+  <h4 class="subhead">Proven boundaries</h4>
+  <div class="dt-wrap">
+    <table class="dt">
+      <thead><tr><th>Boundary</th><th>Proven to</th><th>Evidence / note</th></tr></thead>
+      <tbody id="prog-links"></tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ================= 04 MODULES ================= -->
+<section id="modules">
+  <div class="sec-label">04</div>
+  <h2>Compute modules</h2>
+  <p class="lede">Five modules, each with a clear responsibility, its own identity, health reporting, and
+     fallback behavior.</p>
+  <div class="tiles cols-2">
+
+    <div class="tile">
+      <h3><span class="dot" style="background:var(--cds-blue-60)"></span>Core Compute Hub</h3>
+      <div class="mono">MARK1-CORE-001 · friday-core-os · 10.0.1.1</div>
+      <p>Primary brain. Mission planning, autonomy, authority leases, envelope signing, module registry,
+         fault management, and coordination of every other deck.</p>
+      <table class="kv">
+        <tr><td>Hardware</td><td>Raspberry Pi 4B · 8 GB</td></tr>
+        <tr><td>OS / stack</td><td>Ubuntu 24.04 LTS · ROS 2 Jazzy · A/B OTA partitions</td></tr>
+        <tr><td>Links</td><td>USB CDC micro-ROS → ESP32s · Ethernet → Gateway &amp; Lab Deck · local mosquitto broker</td></tr>
+        <tr><td>Key services</td><td class="mono2">mission-planner · autonomy-manager · command-router · module-registry · safety-supervisor · fault-manager</td></tr>
+      </table>
+    </div>
+
+    <div class="tile">
+      <h3><span class="dot" style="background:var(--cds-teal-40)"></span>Telemetry Gateway</h3>
+      <div class="mono">MARK1-TEL-001 · friday-telemetry-os · 10.0.1.2</div>
+      <p>Dedicated communication and recovery gateway. Routes signed packets between the rover's internal
+         MQTT bus and the outside world. <b>No ROS 2. No keys. No safe-stop authority.</b></p>
+      <table class="kv">
+        <tr><td>Hardware</td><td>Raspberry Pi 3B+ · 1 GB</td></tr>
+        <tr><td>OS / stack</td><td>Debian 12 Lite (headless) · systemd services only</td></tr>
+        <tr><td>Radios</td><td>2× 4G LTE USB (dual-carrier) · Heltec LoRa32 V3 · Wi-Fi · BT · backup ESP32 beacon</td></tr>
+        <tr><td>Key services</td><td class="mono2">mosquitto-relay · modem-manager · network-router · lora-bridge · health-beacon · esp32-watchdog</td></tr>
+      </table>
+    </div>
+
+    <div class="tile">
+      <h3><span class="dot" style="background:var(--cds-magenta-50)"></span>Locomotion Control Unit</h3>
+      <div class="mono">MARK1-MOB-001 · ESP32 firmware · micro-ROS</div>
+      <p>All movement, locally. Converts high-level motion commands into motor and steering behavior;
+         fails safe on its own hardware watchdog, independent of both Pis.</p>
+      <table class="kv">
+        <tr><td>Hardware</td><td>ESP32-WROOM-32 · 6× DRV8871 drivers · PCA9685 PWM · BNO085 IMU · INA219</td></tr>
+        <tr><td>Drivetrain</td><td>6× XD-37GB555 12 V gearmotors · 64 CPR encoders (PCNT) · 4× 25 kg corner-steer servos</td></tr>
+        <tr><td>Safety</td><td>Hardware Task WDT → safe-stop in ≤100 ms on lost comms</td></tr>
+        <tr><td>Key services</td><td class="mono2">motor-control-loop · odometry-estimator · stall-detector · safe-stop-handler · mobility-heartbeat</td></tr>
+      </table>
+    </div>
+
+    <div class="tile">
+      <h3><span class="dot" style="background:var(--cds-purple-50)"></span>Adaptive Research Module · Lab Deck</h3>
+      <div class="mono">MARK1-LAB-001 · friday-researchdeck-os · 10.0.1.3</div>
+      <p>Plug-and-play research sensors, high-volume capture, SLAM/mapping, and edge inference.
+         Raw data stays local — only processed outputs cross to the Core Hub.</p>
+      <table class="kv">
+        <tr><td>Hardware</td><td>Raspberry Pi 5 · 8 GB · Google Coral USB TPU</td></tr>
+        <tr><td>OS / stack</td><td>Ubuntu 24.04 LTS · ROS 2 Jazzy · sensor profiles in /etc/friday/profiles/</td></tr>
+        <tr><td>Data gate</td><td class="mono2">MapSegment · DetectedObjectArray · CoverageProgress · EnvironmentReport</td></tr>
+        <tr><td>Key services</td><td class="mono2">sensor-plugin-manager · lidar-capture · coral-inference · mapping-service · processed-data-publisher</td></tr>
+      </table>
+    </div>
+
+    <div class="tile">
+      <h3><span class="dot" style="background:var(--cds-yellow-30)"></span>Aerial Companion Bay</h3>
+      <div class="mono">MARK1-SPARKBAY-001 · ESP32-S3 firmware</div>
+      <p>Launch, dock, charge, and coordinate <b>Spark</b>, the companion drone. Eight pre-launch safety
+         interlocks; the lock engages if the watchdog trips.</p>
+      <table class="kv">
+        <tr><td>Hardware</td><td>ESP32-S3 · passive V-cradle · servo lock · pogo charging + UART to Spark</td></tr>
+        <tr><td>Interlocks</td><td>IR break-beam · weight pad · limit switches · INA219 current monitor</td></tr>
+        <tr><td>Key services</td><td class="mono2">spark-bay-controller · launch-sequence-manager · docking-state-monitor · bay-safety-checker</td></tr>
+      </table>
+    </div>
+
+    <div class="tile">
+      <h3><span class="dot" style="background:var(--cds-gray-70)"></span>Command Center <span class="tag outline" style="margin-left:4px">external</span></h3>
+      <div class="mono">Friday Command Center (FCC) · separate repo</div>
+      <p>The operator side: mission assignment, live dashboards, AI decision review, override.
+         Talks to the rover only through signed envelopes on the external MQTT broker.</p>
+      <table class="kv">
+        <tr><td>Broker</td><td>EMQX · MQTT 5 over TLS 1.3 · per-rover mTLS</td></tr>
+        <tr><td>Trust model</td><td>Operator Ed25519 keys allowlisted on the rover; rover key signs outbound telemetry</td></tr>
+        <tr><td>Reach</td><td>4G primary → 4G backup → LoRa → Wi-Fi (gateway radio failover)</td></tr>
+      </table>
+    </div>
+
+  </div>
+</section>
+
+<!-- ================= 05 COMMUNICATION ================= -->
+<section id="comms">
+  <div class="sec-label">05</div>
+  <h2>Communication architecture</h2>
+  <p class="lede">Three distinct transport domains. No DDS ever crosses the Core ↔ Telemetry boundary, and no
+     unsigned command ever crosses the external one.</p>
+  <div class="dt-wrap">
+    <table class="dt">
+      <thead><tr><th>Domain</th><th>Endpoints</th><th>Transport</th><th>Wire format</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Robotics (internal)</td>
+          <td>Core Hub ↔ Locomotion / Spark Bay ESP32s · Core Hub ↔ Lab Deck</td>
+          <td>ROS 2 DDS · USB-serial micro-ROS (921600+ baud)</td>
+          <td class="mono2">friday_msgs (bounded, semver header)</td>
+        </tr>
+        <tr>
+          <td>Internal bridge</td>
+          <td>Core Hub ↔ Telemetry Gateway</td>
+          <td>MQTT over Ethernet (static IPs, internal subnet)</td>
+          <td class="mono2">Ed25519-signed CBOR envelopes</td>
+        </tr>
+        <tr>
+          <td>External boundary</td>
+          <td>Telemetry Gateway ↔ Command Center (EMQX)</td>
+          <td>MQTT 5 · TLS 1.3 · per-rover mTLS · radio failover</td>
+          <td class="mono2">Ed25519-signed CBOR envelopes</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4 class="subhead">QoS profiles (locked)</h4>
+  <div class="dt-wrap">
+    <table class="dt">
+      <thead><tr><th>Profile</th><th>Used for</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr><td class="mono2">critical_reliable</td><td>Motion commands, safe-stop, authority</td><td>A dropped command is a safety event — must be RELIABLE</td></tr>
+        <tr><td class="mono2">state_default</td><td>Module state, registry, leases</td><td>Latest value matters; transient loss acceptable</td></tr>
+        <tr><td class="mono2">sensor_stream</td><td>Odometry, IMU, sensor data</td><td>Fresh beats complete — BEST_EFFORT, shallow queue</td></tr>
+        <tr><td class="mono2">heartbeat</td><td>Liveness pulses</td><td>Deadline-tracked; loss itself is the signal</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4 class="subhead">Mission topics (CC ↔ rover, signed envelope namespace)</h4>
+  <div class="dt-wrap">
+    <table class="dt">
+      <thead><tr><th>Topic</th><th>Direction</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td class="mono2">mark1/&lt;rover&gt;/mission/assign</td><td>CC → Rover</td><td>Operator uploads a mission (area, waypoints, autonomy level)</td></tr>
+        <tr><td class="mono2">mark1/&lt;rover&gt;/mission/status</td><td>Rover → CC</td><td>Progress %, current waypoint, ETA, AI state, anomalies</td></tr>
+        <tr><td class="mono2">mark1/&lt;rover&gt;/mission/decision</td><td>Rover → CC</td><td>What the AI decided and why (human-readable)</td></tr>
+        <tr><td class="mono2">mark1/&lt;rover&gt;/mission/approval</td><td>CC → Rover</td><td>Approve / reject / modify an AI-proposed action</td></tr>
+        <tr><td class="mono2">mark1/&lt;rover&gt;/cmd/override</td><td>CC → Rover</td><td>Emergency takeover — drops to Level 0 (manual)</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ================= 06 SECURITY ================= -->
+<section id="security">
+  <div class="sec-label">06</div>
+  <h2>Security boundary</h2>
+  <p class="lede">Every command crossing the external boundary is an Ed25519-signed, CBOR-encoded envelope with a
+     monotonic nonce and an expiry. A command is accepted only if <b>all</b> checks hold — anything else is
+     rejected with a category: never executed, never queued, never an exception.</p>
+
+  <div class="pipe">
+    <div class="step"><div class="n">01</div><div class="t">Decode CBOR</div><div class="r">reject: SECURITY_AUTH</div></div>
+    <div class="step"><div class="n">02</div><div class="t">Well-formed map + field types</div><div class="r">reject: MALFORMED</div></div>
+    <div class="step"><div class="n">03</div><div class="t">Protocol major matches</div><div class="r">reject: PROTOCOL_MISMATCH</div></div>
+    <div class="step"><div class="n">04</div><div class="t">rover_id matches</div><div class="r">reject: ROVER_MISMATCH</div></div>
+    <div class="step"><div class="n">05</div><div class="t">Sender allowlisted</div><div class="r">reject: UNKNOWN_SENDER</div></div>
+    <div class="step"><div class="n">06</div><div class="t">Ed25519 signature verifies</div><div class="r">reject: SECURITY_AUTH</div></div>
+    <div class="step"><div class="n">07</div><div class="t">Not expired</div><div class="r">reject: EXPIRED</div></div>
+    <div class="step"><div class="n">08</div><div class="t">Nonce strictly increases</div><div class="r">reject: SECURITY_REPLAY</div></div>
+  </div>
+
+  <div class="tiles cols-2">
+    <div class="tile">
+      <h3>Key placement</h3>
+      <p>The rover's private key and the operator allowlist live <b>only on the Core Hub</b>. The Telemetry
+         Gateway relays opaque signed bytes — compromising the internet-facing node yields no signing capability.
+         A malformed operators file degrades to an empty allowlist (all commands rejected), never a crash.</p>
+    </div>
+    <div class="tile">
+      <h3>Replay protection</h3>
+      <p>Per-sender monotonic nonce floor, persisted to an fsync'd file and committed <b>before</b> the ACK —
+         a reboot cannot reopen a replay window. Rejected commands never advance the floor. Rover-originated
+         telemetry (odometry, faults, ACKs) is signed with the rover key so spoofed telemetry is equally rejected.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 07 SAFETY ================= -->
+<section id="safety">
+  <div class="sec-label">07</div>
+  <h2>Safety &amp; fallback</h2>
+  <p class="lede">Motion safety never depends on a Pi being alive. Override priority is absolute — the operator
+     can always take the wheel back, and the AI never outranks a human.</p>
+
+  <h4 class="subhead" style="margin-top:0">Override priority (highest wins)</h4>
+  <div class="chain">
+    <div class="c hw">Hardware E-stop</div><span class="gt">&gt;</span>
+    <div class="c hw">Operator emergency stop</div><span class="gt">&gt;</span>
+    <div class="c">CC override</div><span class="gt">&gt;</span>
+    <div class="c">AI decision</div><span class="gt">&gt;</span>
+    <div class="c">Scheduled plan</div>
+  </div>
+
+  <h4 class="subhead">Failure matrix</h4>
+  <div class="dt-wrap">
+    <table class="dt">
+      <thead><tr><th>Failure</th><th>Detection</th><th>Behavior</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Core Hub dies</td>
+          <td>Locomotion heartbeat loss · Gateway internal-MQTT heartbeat loss</td>
+          <td>Locomotion ESP32 hardware watchdog fires safe-stop in ≤100 ms (independent of both Pis).
+              Gateway reports "Core down" to CC; CC may power-cycle the Core Hub via load switch.</td>
+        </tr>
+        <tr>
+          <td>Telemetry Gateway dies</td>
+          <td>Core Hub bridge heartbeat loss</td>
+          <td>Mission continues if safe; internal MQTT traffic queues locally; no external comms;
+              backup ESP32 LoRa beacon if configured.</td>
+        </tr>
+        <tr>
+          <td>Both Pis die</td>
+          <td>Backup ESP32 failure-detection logic</td>
+          <td>Emergency LoRa beacon "Mark 1 alive, awaiting recovery". Locomotion already in safe-stop.
+              The backup ESP32 holds <b>no command authority</b>.</td>
+        </tr>
+        <tr>
+          <td>Locomotion loses command link</td>
+          <td>Firmware watchdog (100 ms deadline)</td>
+          <td>Stop motors safely, lock current state, report fault if possible.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="note"><b>Split-brain rule.</b> Command authority is held via explicit leases from the module registry.
+     On failover the new holder acquires a fresh lease epoch; stale-epoch commands are rejected, so two brains can
+     never drive the same motors.</div>
+</section>
+
+<!-- ================= 08 AI HARNESS ================= -->
+<section id="ai">
+  <div class="sec-label">08</div>
+  <h2>AI harness — autonomy interface</h2>
+  <p class="lede">The harness is a socket. Whatever brain plugs into it — simple rules, Nav2, vision AI, or a full
+     LLM agent — the rest of the system (safety, authority, comms) stays untouched. Every AI action becomes a
+     <span class="mono2">MotionCommand</span> through the <b>same</b> authority and safety pipeline. No bypass.</p>
+  <div class="tiles cols-2">
+    <div class="tile">
+      <h3>Autonomy levels <span class="tag outline">set per-mission by the operator</span></h3>
+      <table class="kv">
+        <tr><td class="mono2">L0 · Manual</td><td>AI decides nothing; direct joystick</td></tr>
+        <tr><td class="mono2">L1 · Assisted</td><td>AI: obstacle avoidance, speed limits · Operator: direction, goals</td></tr>
+        <tr><td class="mono2">L2 · Supervised</td><td>AI plans paths; operator approves each waypoint</td></tr>
+        <tr><td class="mono2">L3 · Autonomous</td><td>AI executes the mission; operator monitors, can always override</td></tr>
+      </table>
+    </div>
+    <div class="tile">
+      <h3>Brain upgrade path <span class="tag outline">same harness for all</span></h3>
+      <table class="kv">
+        <tr><td class="mono2">B1 · Rules</td><td>if/else behaviors on the Pi 4B</td></tr>
+        <tr><td class="mono2">B2 · Nav2</td><td>path planning + behavior trees on the Pi 4B</td></tr>
+        <tr><td class="mono2">B3 · Vision AI</td><td>YOLO-class detection on Coral TPU / Lab Deck</td></tr>
+        <tr><td class="mono2">B4 · LLM agent</td><td>natural-language missions, cloud via 4G or edge</td></tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 09 DATA FLOW ================= -->
+<section id="dataflow">
+  <div class="sec-label">09</div>
+  <h2>Data flow — 5-acre mapping mission</h2>
+  <p class="lede">End to end, one mission through every domain of the system.</p>
+  <div class="flow">
+    <div class="f"><span class="who" style="color:#8d8d8d">CC</span><span class="what">Command Center signs a mission envelope, publishes to the EMQX broker</span></div>
+    <div class="f"><span class="who" style="color:var(--cds-teal-40)">GATEWAY</span><span class="what">Receives over 4G/LoRa, relays to internal MQTT over Ethernet — opaque bytes, no crypto</span></div>
+    <div class="f"><span class="who" style="color:var(--cds-blue-40)">CORE</span><span class="what">Verifies signature, expiry, nonce; extracts the mission; plans movement goals</span></div>
+    <div class="f"><span class="who" style="color:var(--cds-magenta-50)">LOCO</span><span class="what">Receives goals over USB micro-ROS; drives motors and steering; streams odometry back</span></div>
+    <div class="f"><span class="who" style="color:var(--cds-purple-50)">LAB</span><span class="what">Starts LiDAR / camera / environmental capture; builds map segments; runs edge inference</span></div>
+    <div class="f"><span class="who" style="color:var(--cds-purple-50)">LAB</span><span class="what">Sends only processed outputs to Core (MapSegment, DetectedObjectArray, CoverageProgress) — raw stays local</span></div>
+    <div class="f"><span class="who" style="color:var(--cds-blue-40)">CORE</span><span class="what">Updates the route from terrain + progress; signs a progress envelope to internal MQTT</span></div>
+    <div class="f"><span class="who" style="color:var(--cds-teal-40)">GATEWAY</span><span class="what">Relays the signed envelope to EMQX over whichever radio is alive</span></div>
+    <div class="f"><span class="who" style="color:var(--cds-yellow-30)">BAY</span><span class="what">If needed: Core commands a Spark launch after all 8 interlocks pass; Spark scouts ahead</span></div>
+    <div class="f"><span class="who" style="color:#8d8d8d">CC</span><span class="what">Live dashboard updates; mission completes; data logged (MCAP) and synchronized</span></div>
+  </div>
+</section>
+
+<footer>
+  <div style="margin-bottom:8px"><span class="mono2">Friday Labs · Mark 1 · System Blueprint</span></div>
+  Sources: <span class="mono2">Mark 1 Compute Architecture.md · Friday Labs OS Architecture.md · Command Center Protocol
+  Security.md · Safe-Stop Latency Budget.md · Authority Lease Protocol.md · friday_msgs Schema Conventions.md</span><br>
+  Rendered as a self-contained page; the 3D view loads Three.js from CDN. Mark 1 is built for research and public
+  welfare — non-destructive by design.
+</footer>
+
+</main>
+
+<script src="progress.js"></script>
+<script type="module">
+/* ============================================================
+   Mark 1 interactive system view — Three.js
+   Blueprint aesthetic: translucent slabs + bright edge wireframes
+   ============================================================ */
+const $ = (id) => document.getElementById(id);
+
+const MODULES = {
+  cc: {
+    name: 'Command Center', id: 'FCC · EMQX broker · external', color: 0x8d8d8d,
+    blurb: 'Operator side of the boundary. Missions, dashboards, AI decision review, override. Reaches the rover only through Ed25519-signed CBOR envelopes over MQTT 5 / TLS 1.3 with per-rover mTLS.',
+    groups: [ ['Link', ['MQTT 5 · TLS 1.3 · mTLS', '4G → 4G → LoRa → Wi-Fi failover']] ],
+  },
+  tel: {
+    name: 'Telemetry Gateway', id: 'MARK1-TEL-001 · Pi 3B+ 1GB · 10.0.1.2', color: 0x08bdba,
+    blurb: 'Network boundary, not a robot brain. Debian 12 Lite, no ROS 2, no keys, no safe-stop authority. Routes signed packets between the internal MQTT bus and the outside world; keeps a health beacon alive even when the Core is down.',
+    groups: [ ['Services', ['mosquitto-relay', 'modem-manager (2× 4G)', 'network-router (failover)', 'lora-bridge (Heltec LoRa32)', 'health-beacon', 'esp32-watchdog']] ],
+  },
+  core: {
+    name: 'Core Compute Hub', id: 'MARK1-CORE-001 · Pi 4B 8GB · 10.0.1.1', color: 0x0f62fe,
+    blurb: 'Primary brain. Ubuntu 24.04 + ROS 2 Jazzy. Mission planning, the AI harness (autonomy-manager), authority leases, envelope signing and validation, module registry, fault management. The rover key never leaves this node.',
+    groups: [ ['Services', ['mission-planner', 'autonomy-manager (AI harness)', 'command-router', 'module-registry', 'safety-supervisor', 'fault-manager', 'mosquitto (internal broker)']] ],
+  },
+  loco: {
+    name: 'Locomotion Control Unit', id: 'MARK1-MOB-001 · ESP32-WROOM-32 · micro-ROS', color: 0xee5396,
+    blurb: 'All movement, locally. 6× 12 V gearmotors with 64 CPR encoders on hardware counters, 6× DRV8871 drivers, 4 corner-steer servos, BNO085 IMU. Hardware watchdog fires safe-stop in ≤100 ms — fully independent of both Pis.',
+    groups: [ ['Firmware', ['motor-control-loop', 'steering-control-loop', 'odometry-estimator', 'stall-detector', 'safe-stop-handler (100 ms WDT)', 'mobility-heartbeat']] ],
+  },
+  lab: {
+    name: 'Lab Deck · Research Module', id: 'MARK1-LAB-001 · Pi 5 8GB + Coral TPU · 10.0.1.3', color: 0xa56eff,
+    blurb: 'Plug-and-play sensors, SLAM/mapping, edge inference. Raw sensor data stays here — only processed outputs (MapSegment, DetectedObjectArray, CoverageProgress, EnvironmentReport) cross the data gate to the Core Hub.',
+    groups: [ ['Services', ['sensor-plugin-manager (hotplug)', 'lidar-capture · camera-capture', 'coral-inference (INT8 edge TPU)', 'mapping-service (SLAM)', 'research-data-logger (MCAP)', 'processed-data-publisher (gate)']] ],
+  },
+  bay: {
+    name: 'Aerial Companion Bay', id: 'MARK1-SPARKBAY-001 · ESP32-S3', color: 0xf1c21b,
+    blurb: 'Launch, dock, and charge Spark, the companion drone. Passive V-cradle, servo lock, pogo charging with UART. Eight pre-launch interlocks (IR break-beam, weight pad, limit switches, current monitor); the lock engages if the watchdog trips.',
+    groups: [ ['Firmware', ['spark-bay-controller', 'launch-sequence-manager', 'docking-state-monitor', 'charging-monitor', 'bay-safety-checker (8 interlocks)']] ],
+  },
+};
+
+const LINKS = [
+  { a: 'cc',  b: 'tel',  color: 0x08bdba, dashed: true,  arc: 2.2, speed: 0.30, n: 3, label: 'signed CBOR · MQTT5/TLS' },
+  { a: 'tel', b: 'core', color: 0x4589ff, dashed: false, arc: 0,   speed: 0.45, n: 2, label: 'internal MQTT · Ethernet' },
+  { a: 'core','b': 'loco', color: 0xee5396, dashed: false, arc: 0,  speed: 0.60, n: 2, label: 'micro-ROS · USB' },
+  { a: 'core', b: 'bay',  color: 0xf1c21b, dashed: false, arc: 0,   speed: 0.40, n: 1, label: 'micro-ROS · USB' },
+  { a: 'core', b: 'lab',  color: 0xa56eff, dashed: false, arc: 0,   speed: 0.50, n: 2, label: 'ROS 2 DDS · Ethernet' },
+];
+
+/* exploded / assembled positions [x, y, z] */
+const POS = {
+  exploded:  { cc: [0, 5.6, 0], tel: [0, 3.4, 0], core: [0, 1.2, 0], loco: [-3.4, -1.4, 0.6], lab: [0, -1.4, -1.6], bay: [3.4, -1.4, 0.6] },
+  assembled: { cc: [0, 4.6, 0], tel: [0, 1.05, 0], core: [0, 0.45, 0], loco: [-2.2, -0.35, 0.5], lab: [0, -0.35, -1.2], bay: [2.2, -0.35, 0.5] },
+};
+
+/* board sizes [w, h, d] — schematic, not to scale */
+const SIZE = { cc: [4.6, 0.08, 2.6], tel: [2.4, 0.22, 1.7], core: [2.6, 0.26, 1.8], loco: [1.7, 0.2, 1.2], lab: [2.4, 0.26, 1.7], bay: [1.7, 0.2, 1.2] };
+
+/* ---------- progress layer (from progress.js; page degrades gracefully without it) ---------- */
+const PROG = window.MARK1_PROGRESS || null;
+const STAGES = ['spec', 'sim', 'bench', 'field'];
+const STAGE_COLOR = { spec: '#8d8d8d', sim: '#4589ff', bench: '#08bdba', field: '#42be65' };
+const STAGE_TAG = { spec: 'outline', sim: 'blue', bench: 'teal', field: 'green' };
+/* board prominence grows with stage: [edge opacity, slab opacity] */
+const STAGE_VIS = { spec: [0.35, 0.07], sim: [0.8, 0.15], bench: [0.95, 0.2], field: [1, 0.26] };
+/* per-sub-module block — height, glow and opacity all grow with build stage */
+const SUB_H = { spec: 0.13, sim: 0.20, bench: 0.28, field: 0.34 };
+const SUB_EMIT = { spec: 0.0, sim: 0.14, bench: 0.34, field: 0.5 };
+const SUB_OP = { spec: 0.5, sim: 0.74, bench: 0.92, field: 1 };
+/* the parts inside a module: from progress.js, else the module's own service list (as spec) */
+const subsOf = (k) => (PROG && PROG.components[k] && PROG.components[k].submodules)
+  || (MODULES[k].groups || []).flatMap(([, items]) => items.map((n) => ({ n, stage: 'spec' })));
+const stageOf = (k) => PROG?.components?.[k]?.stage || 'sim';
+
+let selected = 'core';
+
+function renderInspector(key) {
+  const m = MODULES[key];
+  const hex = '#' + m.color.toString(16).padStart(6, '0');
+  const c = PROG?.components?.[key];
+  const progressHtml = c ? `
+    <div class="grp">Build stage</div>
+    <div><span class="tag ${STAGE_TAG[c.stage]}">${c.stage.toUpperCase()}</span>
+         <span class="mono2" style="color:var(--cds-text-helper)"> ${c.repos}</span></div>
+    <div class="pnext"><b>NEXT →</b>${c.next}</div>
+    <div class="grp">Milestones</div>
+    <ul class="ms">${c.milestones.map(ms => `
+      <li class="${ms.done ? '' : 'todo'}"><span class="tick">${ms.done ? '✓' : '○'}</span>
+        <span>${ms.t}</span>${ms.proof ? `<span class="proof">${ms.proof}</span>` : ''}</li>`).join('')}
+    </ul>` : '';
+  const subs = c?.submodules;
+  const onHw = subs ? subs.filter(s => s.stage === 'bench' || s.stage === 'field').length : 0;
+  const subsHtml = subs ? `
+    <div class="grp">Sub-modules · ${onHw}/${subs.length} on hardware</div>
+    <ul class="subs">${subs.map(s => `
+      <li><span class="sdot" style="background:${STAGE_COLOR[s.stage] || '#8d8d8d'}"></span>
+        <span>${s.n}</span>
+        <span class="stag" style="color:${STAGE_COLOR[s.stage] || '#8d8d8d'}">${s.stage}</span></li>`).join('')}
+    </ul>` : '';
+  /* when sub-modules carry the service list, drop the duplicate static group */
+  const groupSrc = subs ? m.groups.filter(([title]) => !['Services', 'Firmware'].includes(title)) : m.groups;
+  const groups = groupSrc.map(([title, items]) =>
+    `<div class="grp">${title}</div><ul>${items.map(i => `<li>${i}</li>`).join('')}</ul>`).join('');
+  $('inspector').innerHTML = `
+    <div class="sec-label">MODULE INSPECTOR</div>
+    <h3><span class="dot" style="background:${hex}"></span>${m.name}</h3>
+    <div class="id">${m.id}</div>
+    <p>${m.blurb}</p>
+    ${progressHtml}
+    ${subsHtml}
+    ${groups}`;
+}
+renderInspector(selected);
+
+/* ---------- build-status section (renders even if the 3D view can't load) ---------- */
+if (PROG) {
+  const comps = Object.entries(PROG.components);
+  const allMs = comps.flatMap(([, c]) => c.milestones);
+  const byStage = STAGES.map((s) => [s, comps.filter(([, c]) => c.stage === s).length]);
+  $('prog-stats').innerHTML = byStage.map(([s, n]) => `
+    <div class="stat"><div class="v" style="color:${STAGE_COLOR[s]}">${n}</div>
+      <div class="k">modules at ${s.toUpperCase()}</div></div>`).join('') + `
+    <div class="stat"><div class="v">${allMs.filter(m => m.done).length}<small> / ${allMs.length}</small></div>
+      <div class="k">milestones proven</div></div>
+    <div class="stat"><div class="v mono2" style="font-size:18px;padding-top:6px">${PROG.updated}</div>
+      <div class="k">last updated</div></div>`;
+
+  $('prog-grid').innerHTML = comps.map(([k, c]) => {
+    const m = MODULES[k];
+    const done = c.milestones.filter(ms => ms.done).length;
+    const pct = Math.round((done / c.milestones.length) * 100);
+    const hex = '#' + m.color.toString(16).padStart(6, '0');
+    return `
+    <div class="tile pcard" data-key="${k}">
+      <h3><span class="dot" style="background:${hex}"></span>${m.name}
+          <span class="tag ${STAGE_TAG[c.stage]}" style="margin-left:auto">${c.stage.toUpperCase()}</span></h3>
+      <div class="mono">${c.repos}</div>
+      <div class="bar"><i style="width:${pct}%;background:${STAGE_COLOR[c.stage]}"></i></div>
+      <div class="pcount">${done} / ${c.milestones.length} milestones</div>
+      <div class="pnext"><b>NEXT →</b>${c.next}</div>
+    </div>`;
+  }).join('');
+
+  $('prog-links').innerHTML = Object.entries(PROG.links).map(([pair, l]) => {
+    const [a, b] = pair.split('-');
+    const tag = l.proven === 'none'
+      ? '<span class="tag outline">UNPROVEN</span>'
+      : `<span class="tag ${STAGE_TAG[l.proven]}">${l.proven.toUpperCase()}</span>`;
+    return `<tr><td>${MODULES[a].name} ↔ ${MODULES[b].name}</td><td>${tag}</td><td>${l.note}</td></tr>`;
+  }).join('');
+
+  document.querySelectorAll('.pcard').forEach((card) => card.addEventListener('click', () => {
+    const k = card.dataset.key;
+    renderInspector(k);
+    window.__select3d?.(k);
+    $('system3d').scrollIntoView({ behavior: 'smooth' });
+  }));
+
+  $('vlegend').innerHTML = STAGES.map((s) =>
+    `<span style="color:${STAGE_COLOR[s]}">${s}</span>`).join('') +
+    '<span style="color:#6f6f6f">solid link = proven</span>';
+}
+
+try {
+  const THREE = await import('three');
+  const { OrbitControls } = await import('three/addons/controls/OrbitControls.js');
+  const { CSS2DRenderer, CSS2DObject } = await import('three/addons/renderers/CSS2DRenderer.js');
+
+  const container = $('viewer');
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x1c1c1c);
+  scene.fog = new THREE.Fog(0x1c1c1c, 18, 34);
+
+  const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
+  const CAM_HOME = new THREE.Vector3(8.5, 5.5, 10.5);
+  camera.position.copy(CAM_HOME);
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  container.appendChild(renderer.domElement);
+
+  const labelRenderer = new CSS2DRenderer({ element: $('labels') });
+
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.06;
+  controls.target.set(0, 1.6, 0);
+  controls.autoRotate = true;
+  controls.autoRotateSpeed = 0.7;
+  controls.minDistance = 5; controls.maxDistance = 26;
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.9));
+  const key = new THREE.DirectionalLight(0xffffff, 1.4);
+  key.position.set(6, 10, 8);
+  scene.add(key);
+
+  /* floor grid — drafting-table feel */
+  const grid = new THREE.GridHelper(30, 30, 0x393939, 0x2a2a2a);
+  grid.position.y = -2.4;
+  scene.add(grid);
+
+  /* ---------- boards ---------- */
+  const boards = {};      // key -> group
+  const pickables = [];   // meshes for raycast
+  const chipGeo = new THREE.BoxGeometry(1, 1, 1);
+
+  function makeBoard(k) {
+    const m = MODULES[k], [w, h, d] = SIZE[k];
+    const g = new THREE.Group();
+    g.userData.key = k;
+    const [edgeOp, slabOp] = STAGE_VIS[stageOf(k)];
+
+    const slabGeo = new THREE.BoxGeometry(w, h, d);
+    const slab = new THREE.Mesh(slabGeo, new THREE.MeshStandardMaterial({
+      color: m.color, transparent: true, opacity: slabOp, roughness: 0.4, metalness: 0.1,
+    }));
+    slab.userData.key = k;
+    g.add(slab); pickables.push(slab);
+
+    const edges = new THREE.LineSegments(
+      new THREE.EdgesGeometry(slabGeo),
+      new THREE.LineBasicMaterial({ color: m.color, transparent: true, opacity: edgeOp }));
+    g.add(edges);
+    g.userData.slab = slab; g.userData.edges = edges;
+    g.userData.baseOps = [edgeOp, slabOp];
+
+    /* sub-modules: one small block per part, laid out in a grid on the board's
+       top face, each coloured + lit by its own build stage. The label rides
+       above it (hidden until the parent module is selected). */
+    g.userData.subLabels = [];
+    const subs = subsOf(k);
+    if (subs.length) {
+      const cols = Math.max(1, Math.round(Math.sqrt(subs.length * (w / d))));
+      const rows = Math.ceil(subs.length / cols);
+      const cellW = (w * 0.84) / cols, cellD = (d * 0.84) / rows;
+      subs.forEach((s, i) => {
+        const st = STAGES.includes(s.stage) ? s.stage : 'spec';
+        const col = i % cols, row = Math.floor(i / cols);
+        const c3 = new THREE.Color(STAGE_COLOR[st]);
+        const bh = SUB_H[st], bw = cellW * 0.66, bd = cellD * 0.66;
+        const x = -w * 0.42 + (col + 0.5) * cellW;
+        const z = -d * 0.42 + (row + 0.5) * cellD;
+        const cube = new THREE.Mesh(chipGeo, new THREE.MeshStandardMaterial({
+          color: c3, emissive: c3, emissiveIntensity: SUB_EMIT[st],
+          transparent: true, opacity: SUB_OP[st], roughness: 0.45, metalness: 0.1,
+        }));
+        cube.scale.set(bw, bh, bd);
+        cube.position.set(x, h / 2 + bh / 2, z);
+        cube.userData.key = k;
+        g.add(cube); pickables.push(cube);
+
+        const sl = document.createElement('div');
+        sl.className = 'sub-label';
+        sl.innerHTML = `<span class="sd" style="background:${STAGE_COLOR[st]}"></span>${s.n}`;
+        const slo = new CSS2DObject(sl);
+        slo.position.set(x, h / 2 + bh + 0.14, z);
+        g.add(slo);
+        g.userData.subLabels.push(sl);
+        cube.userData.label = sl;   // hover this block -> reveal just this label
+      });
+    }
+
+    const el = document.createElement('div');
+    el.className = 'n-label'; el.dataset.key = k;
+    const stage = stageOf(k);
+    el.innerHTML = m.name.toUpperCase() +
+      (PROG ? `<span class="st" style="color:${STAGE_COLOR[stage]}">${stage.toUpperCase()}</span>` : '');
+    el.addEventListener('click', () => select(k));
+    const lbl = new CSS2DObject(el);
+    // core + lab hang their labels below the board so the assembled stack doesn't collide
+    const below = k === 'core' || k === 'lab';
+    lbl.position.set(0, below ? -(h / 2 + 0.34) : h / 2 + 0.34, 0);
+    g.add(lbl);
+    g.userData.labelEl = el;
+
+    scene.add(g);
+    boards[k] = g;
+  }
+  Object.keys(MODULES).forEach(makeBoard);
+
+  /* ---------- links + packets ---------- */
+  const linkObjs = [];
+  function linkCurve(link, pa, pb) {
+    const a = new THREE.Vector3(...pa), b = new THREE.Vector3(...pb);
+    if (link.arc > 0) {
+      const mid = a.clone().lerp(b, 0.5); mid.x += link.arc; mid.z += link.arc * 0.5;
+      return new THREE.QuadraticBezierCurve3(a, mid, b);
+    }
+    return new THREE.LineCurve3(a, b);
+  }
+  const packetGeo = new THREE.SphereGeometry(0.055, 10, 10);
+  LINKS.forEach((link) => {
+    /* proven boundaries render solid with packet traffic; unproven stay dashed and quiet */
+    const lp = PROG?.links?.[`${link.a}-${link.b}`];
+    const proven = PROG ? (lp && lp.proven !== 'none') : !link.dashed;
+    const mat = proven
+      ? new THREE.LineBasicMaterial({ color: link.color, transparent: true, opacity: 0.7 })
+      : new THREE.LineDashedMaterial({ color: link.color, dashSize: 0.16, gapSize: 0.14, transparent: true, opacity: 0.3 });
+    const line = new THREE.Line(new THREE.BufferGeometry(), mat);
+    scene.add(line);
+    const packets = !proven ? [] : Array.from({ length: link.n }, (_, i) => {
+      const p = new THREE.Mesh(packetGeo, new THREE.MeshBasicMaterial({ color: link.color }));
+      p.userData.offset = i / link.n;
+      scene.add(p);
+      return p;
+    });
+    linkObjs.push({ link, line, packets, curve: null });
+  });
+
+  function refreshLinks(positions) {
+    linkObjs.forEach((o) => {
+      o.curve = linkCurve(o.link, positions[o.link.a], positions[o.link.b]);
+      o.line.geometry.dispose();
+      o.line.geometry = new THREE.BufferGeometry().setFromPoints(o.curve.getPoints(40));
+      if (o.line.material.isLineDashedMaterial) o.line.computeLineDistances();
+    });
+  }
+
+  /* ---------- exploded <-> assembled ---------- */
+  let mix = 1;            // 1 = exploded, 0 = assembled
+  let mixTarget = 1;
+  const current = {};     // live positions per key
+  function applyMix() {
+    Object.keys(boards).forEach((k) => {
+      const e = POS.exploded[k], a = POS.assembled[k];
+      const p = [a[0] + (e[0] - a[0]) * mix, a[1] + (e[1] - a[1]) * mix, a[2] + (e[2] - a[2]) * mix];
+      boards[k].position.set(...p);
+      current[k] = p;
+    });
+    refreshLinks(current);
+  }
+  applyMix();
+
+  /* ---------- selection ---------- */
+  function select(k) {
+    selected = k;
+    Object.entries(boards).forEach(([key2, g]) => {
+      const on = key2 === k;
+      const [edgeOp, slabOp] = g.userData.baseOps;
+      g.userData.slab.material.opacity = on ? Math.max(0.34, slabOp) : slabOp;
+      g.userData.edges.material.color.set(on ? 0xffffff : MODULES[key2].color);
+      g.userData.edges.material.opacity = on ? 1 : edgeOp;
+      g.userData.labelEl.classList.toggle('sel', on);
+    });
+    renderInspector(k);
+  }
+  select(selected);
+  window.__select3d = select;   // build-status cards jump here
+
+  const raycaster = new THREE.Raycaster();
+  const pointer = new THREE.Vector2();
+  let downAt = null;
+  renderer.domElement.addEventListener('pointerdown', (e) => { downAt = [e.clientX, e.clientY]; });
+  renderer.domElement.addEventListener('pointerup', (e) => {
+    if (!downAt || Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 6) return; // drag, not click
+    const r = renderer.domElement.getBoundingClientRect();
+    pointer.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    raycaster.setFromCamera(pointer, camera);
+    const hit = raycaster.intersectObjects(pickables, false)[0];
+    if (hit) select(hit.object.userData.key);
+  });
+  let hoverLabel = null;
+  renderer.domElement.addEventListener('pointermove', (e) => {
+    const r = renderer.domElement.getBoundingClientRect();
+    pointer.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    raycaster.setFromCamera(pointer, camera);
+    const hit = raycaster.intersectObjects(pickables, false)[0];
+    renderer.domElement.style.cursor = hit ? 'pointer' : 'grab';
+    const lbl = (hit && hit.object.userData.label) || null;  // only sub-blocks carry a label
+    if (lbl !== hoverLabel) {
+      if (hoverLabel) hoverLabel.classList.remove('show');
+      hoverLabel = lbl;
+      if (hoverLabel) hoverLabel.classList.add('show');
+    }
+  });
+
+  /* ---------- HUD ---------- */
+  const bE = $('btn-exploded'), bA = $('btn-assembled'), bR = $('btn-rotate');
+  bE.addEventListener('click', () => { mixTarget = 1; bE.classList.add('on'); bA.classList.remove('on'); $('labels').classList.remove('compact'); });
+  bA.addEventListener('click', () => { mixTarget = 0; bA.classList.add('on'); bE.classList.remove('on'); $('labels').classList.add('compact'); });
+  $('btn-reset').addEventListener('click', () => { camera.position.copy(CAM_HOME); controls.target.set(0, 1.6, 0); });
+  bR.addEventListener('click', () => { controls.autoRotate = !controls.autoRotate; bR.classList.toggle('on', controls.autoRotate); });
+  controls.addEventListener('start', () => { controls.autoRotate = false; bR.classList.remove('on'); });
+
+  /* ---------- resize ---------- */
+  function resize() {
+    const w = container.clientWidth, h = Math.max(container.clientHeight, 560);
+    camera.aspect = w / h; camera.updateProjectionMatrix();
+    renderer.setSize(w, h); labelRenderer.setSize(w, h);
+  }
+  new ResizeObserver(resize).observe(container);
+  resize();
+
+  /* ---------- loop ---------- */
+  const clock = new THREE.Clock();
+  renderer.setAnimationLoop(() => {
+    const dt = clock.getDelta(), t = clock.getElapsedTime();
+    if (Math.abs(mix - mixTarget) > 0.001) {
+      mix += (mixTarget - mix) * Math.min(dt * 4, 1);
+      applyMix();
+    }
+    linkObjs.forEach((o) => {
+      if (!o.curve) return;
+      o.packets.forEach((p) => p.position.copy(o.curve.getPoint((t * o.link.speed + p.userData.offset) % 1)));
+    });
+    controls.update();
+    renderer.render(scene, camera);
+    labelRenderer.render(scene, camera);
+  });
+} catch (err) {
+  $('fallback').style.display = 'flex';
+}
+
+/* ---------- nav highlight on scroll ---------- */
+const navLinks = [...document.querySelectorAll('#topnav a')];
+const sections = navLinks.map((a) => document.querySelector(a.hash)).filter(Boolean);
+const spy = new IntersectionObserver((entries) => {
+  entries.forEach((en) => {
+    if (!en.isIntersecting) return;
+    navLinks.forEach((a) => a.classList.toggle('active', a.hash === '#' + en.target.id));
+  });
+}, { rootMargin: '-40% 0px -55% 0px' });
+sections.forEach((s) => spy.observe(s));
+</script>
+</body>
+</html>

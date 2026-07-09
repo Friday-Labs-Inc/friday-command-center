@@ -9,7 +9,7 @@ import {
 } from '@carbon/react'
 import {
   Dashboard, GatewayApi, Devices, Roadmap, Bot,
-  Map, UserMultiple, Settings as SettingsIcon,
+  Map, UserMultiple, Settings as SettingsIcon, Model,
 } from '@carbon/icons-react'
 
 import { useLiveStore, initStore } from '../lib/store'
@@ -25,11 +25,13 @@ import { System } from '../pages/System'
 import { Modules } from '../pages/Modules'
 import { Modes } from '../pages/Modes'
 import { Brain } from '../pages/Brain'
+import { Blueprint } from '../pages/Blueprint'
 
 type NavIcon = React.FC<{ size?: number }>
 
 const NAV_ITEMS: Array<{ to: string; label: string; Icon: NavIcon }> = [
   { to: '/',         label: 'Overview',  Icon: Dashboard as NavIcon },
+  { to: '/blueprint',label: 'Blueprint', Icon: Model as NavIcon },
   { to: '/system',   label: 'System',    Icon: GatewayApi as NavIcon },
   { to: '/modules',  label: 'Modules',   Icon: Devices as NavIcon },
   { to: '/modes',    label: 'Modes',     Icon: Roadmap as NavIcon },
@@ -81,6 +83,7 @@ export function AppShell() {
       <main className="cc-shell-main">
         <Routes>
           <Route path="/"             element={<Overview />} />
+          <Route path="/blueprint"    element={<Blueprint />} />
           <Route path="/system"       element={<System />} />
           <Route path="/modules"      element={<Modules />} />
           <Route path="/modes"        element={<Modes />} />
