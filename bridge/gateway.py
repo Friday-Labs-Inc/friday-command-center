@@ -260,6 +260,12 @@ class SoulBody(BaseModel):
     content: str
 
 
+class ModeBody(BaseModel):
+    autonomy_level: int
+    mission_profile: str
+    brain: str
+
+
 # -- fleet --
 
 @app.get("/api/fleets")
@@ -454,6 +460,37 @@ async def api_put_soul(body: SoulBody):
                 f"{OS_CONTROL_URL}/config/soul",
                 content=payload,
                 headers={**_os_control_headers(), "Content-Type": "application/json"},
+            )
+    except httpx.RequestError as exc:
+        raise HTTPException(502, f"os-control agent unreachable: {exc}")
+    return Response(content=r.content, status_code=r.status_code, media_type="application/json")
+
+
+# -- operating mode (autonomy × profile × brain) --
+# The agent validates against fixed allowlists + persists atomically. The rover-side
+# mode-manager that ACTS on the mode is a separate node (documented follow-up).
+
+@app.get("/api/modes/active")
+async def api_get_mode():
+    _require_os_control()
+    try:
+        async with httpx.AsyncClient(timeout=8) as client:
+            r = await client.get(f"{OS_CONTROL_URL}/config/mode", headers=_os_control_headers())
+    except httpx.RequestError as exc:
+        raise HTTPException(502, f"os-control agent unreachable: {exc}")
+    return Response(content=r.content, status_code=r.status_code, media_type="application/json")
+
+
+@app.put("/api/modes/active")
+async def api_put_mode(body: ModeBody):
+    _require_os_control()
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.put(
+                f"{OS_CONTROL_URL}/config/mode",
+                json={"autonomy_level": body.autonomy_level,
+                      "mission_profile": body.mission_profile, "brain": body.brain},
+                headers=_os_control_headers(),
             )
     except httpx.RequestError as exc:
         raise HTTPException(502, f"os-control agent unreachable: {exc}")

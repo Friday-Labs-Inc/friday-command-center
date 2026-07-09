@@ -1,36 +1,22 @@
 // Modes — interactive mode composer.
-// Local React state only; no backend calls. Three selections (autonomy level,
-// mission profile, decision brain) compose a mode that can be activated once
-// the OS-side mode-manager is wired. Until then, Activate fires a Toast.
+// A mode = autonomy level × mission profile × decision brain. The composed mode is
+// persisted to the Core Hub via the os-control agent (loaded on open, saved on
+// Activate). The rover-side mode-manager that ACTS on the mode is a separate node.
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { Button, Tag, ToastNotification } from '@carbon/react'
 import { Rocket, Roadmap } from '@carbon/icons-react'
+import { useAsync } from '../lib/useAsync'
 import { ConfigCard, type CardStatus } from '../components/ConfigCard'
+import * as api from '../lib/api'
 
 // ── Domain data ──────────────────────────────────────────────────────────────
 
 const AUTONOMY_LEVELS = [
-  {
-    id: 0 as const,
-    label: 'Manual',
-    meta: 'Operator drives every command; rover executes nothing on its own.',
-  },
-  {
-    id: 1 as const,
-    label: 'Assisted',
-    meta: 'Operator sets goals; rover handles low-level motion and obstacle avoidance.',
-  },
-  {
-    id: 2 as const,
-    label: 'Supervised',
-    meta: 'Rover plans and executes; operator approves key decisions before acting.',
-  },
-  {
-    id: 3 as const,
-    label: 'Autonomous',
-    meta: 'AI plans and executes end-to-end; operator supervises and may override.',
-  },
+  { id: 0 as const, label: 'Manual',     meta: 'Operator drives every command; rover executes nothing on its own.' },
+  { id: 1 as const, label: 'Assisted',   meta: 'Operator sets goals; rover handles low-level motion and obstacle avoidance.' },
+  { id: 2 as const, label: 'Supervised', meta: 'Rover plans and executes; operator approves key decisions before acting.' },
+  { id: 3 as const, label: 'Autonomous', meta: 'AI plans and executes end-to-end; operator supervises and may override.' },
 ]
 
 const PROFILES = [
@@ -48,50 +34,77 @@ const BRAINS = [
   { id: 'Hermes' as const, meta: 'Hermes AI (MiniMax-M3) — LLM-backed reasoning and tool execution.' },
 ]
 
-type AutonLevel  = typeof AUTONOMY_LEVELS[number]['id']
-type ProfileId   = typeof PROFILES[number]['id']
-type BrainId     = typeof BRAINS[number]['id']
+type AutonLevel = typeof AUTONOMY_LEVELS[number]['id']
+type ProfileId  = typeof PROFILES[number]['id']
+type BrainId    = typeof BRAINS[number]['id']
+
+interface Mode { autonomy_level: number; mission_profile: string; brain: string }
+type Toast = { kind: 'success' | 'error'; title: string; subtitle: string }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function cardStatus(selected: boolean): CardStatus {
-  return selected ? 'ok' : 'off'
-}
+const cardStatus = (selected: boolean): CardStatus => (selected ? 'ok' : 'off')
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export function Modes() {
+  const modeDoc = useAsync(() => api.activeMode(), [])
   const [autonomy, setAutonomy] = useState<AutonLevel>(0)
   const [profile,  setProfile]  = useState<ProfileId>('Bench')
   const [brain,    setBrain]    = useState<BrainId>('Rules')
-  const [toast,    setToast]    = useState(false)
+  const [active,   setActive]   = useState<Mode | null>(null)
+  const [loaded,   setLoaded]   = useState(false)
+  const [activating, setActivating] = useState(false)
+  const [toast,    setToast]    = useState<Toast | null>(null)
+
+  // Hydrate the composer from the Core Hub's active mode, once.
+  useEffect(() => {
+    if (modeDoc.data && !loaded) {
+      const m = modeDoc.data
+      if (AUTONOMY_LEVELS.some(l => l.id === m.autonomy_level)) setAutonomy(m.autonomy_level as AutonLevel)
+      if (PROFILES.some(p => p.id === m.mission_profile)) setProfile(m.mission_profile as ProfileId)
+      if (BRAINS.some(b => b.id === m.brain)) setBrain(m.brain as BrainId)
+      if (m.exists) setActive({ autonomy_level: m.autonomy_level, mission_profile: m.mission_profile, brain: m.brain })
+      setLoaded(true)
+    }
+  }, [modeDoc.data, loaded])
 
   const selectedLevel   = AUTONOMY_LEVELS.find(l => l.id === autonomy)!
   const selectedProfile = PROFILES.find(p => p.id === profile)!
   const selectedBrain   = BRAINS.find(b => b.id === brain)!
 
-  const handleActivate = useCallback(() => {
-    setToast(true)
-    setTimeout(() => setToast(false), 7000)
-  }, [])
+  const isActive = !!active && active.autonomy_level === autonomy
+    && active.mission_profile === profile && active.brain === brain
+
+  const handleActivate = useCallback(async () => {
+    setActivating(true)
+    try {
+      const res = await api.saveActiveMode({ autonomy_level: autonomy, mission_profile: profile, brain })
+      setActive({ autonomy_level: res.autonomy_level, mission_profile: res.mission_profile, brain: res.brain })
+      setToast({ kind: 'success', title: 'Mode activated',
+        subtitle: `${selectedLevel.label} · ${profile} · ${brain} saved to the Core Hub` })
+    } catch (e) {
+      setToast({ kind: 'error', title: 'Activation failed', subtitle: e instanceof Error ? e.message : String(e) })
+    } finally {
+      setActivating(false)
+    }
+  }, [autonomy, profile, brain, selectedLevel])
 
   return (
     <div className="cc-page">
-
-      {/* ── Toast (fixed so it floats above all content) ───────────────────── */}
       {toast && (
         <div style={{ position: 'fixed', top: '3.75rem', right: '1.5rem', zIndex: 9000 }}>
           <ToastNotification
-            kind="info"
-            title="Mode activation pending"
-            subtitle="mode-manager pending — this will bring up the mode's services when the OS layer is wired."
-            timeout={7000}
-            onCloseButtonClick={() => setToast(false)}
+            kind={toast.kind}
+            lowContrast
+            title={toast.title}
+            subtitle={toast.subtitle}
+            timeout={6000}
+            onCloseButtonClick={() => setToast(null)}
           />
         </div>
       )}
 
-      {/* ── Page header ────────────────────────────────────────────────────── */}
       <header className="cc-pagehead">
         <p className="cc-pagehead__eyebrow">Autonomy</p>
         <div className="cc-pagehead__row">
@@ -101,7 +114,13 @@ export function Modes() {
               A mode = autonomy level × mission profile × decision brain. Compose one and activate.
             </p>
           </div>
-          <Tag type="blue" size="md">mode-manager pending</Tag>
+          <Tag type={active ? 'green' : 'gray'} size="md">
+            {modeDoc.error
+              ? 'agent offline'
+              : active
+                ? `Active · L${active.autonomy_level} ${active.mission_profile} · ${active.brain}`
+                : 'no active mode'}
+          </Tag>
         </div>
       </header>
 
@@ -113,12 +132,8 @@ export function Modes() {
         </div>
         <div className="cc-grid cc-grid--4">
           {AUTONOMY_LEVELS.map(l => (
-            <ConfigCard
-              key={l.id}
-              status={cardStatus(l.id === autonomy)}
-              onClick={() => setAutonomy(l.id)}
-            >
-              <p className="cc-card__eyebrow">Level {l.id}</p>
+            <ConfigCard key={l.id} status={cardStatus(l.id === autonomy)} onClick={() => setAutonomy(l.id)}>
+              <p className="cc-card__eyebrow">Level {l.id}{active?.autonomy_level === l.id ? ' · active' : ''}</p>
               <h3 className="cc-card__title">{l.label}</h3>
               <p className="cc-card__meta">{l.meta}</p>
             </ConfigCard>
@@ -134,12 +149,8 @@ export function Modes() {
         </div>
         <div className="cc-grid cc-grid--3">
           {PROFILES.map(p => (
-            <ConfigCard
-              key={p.id}
-              status={cardStatus(p.id === profile)}
-              onClick={() => setProfile(p.id)}
-            >
-              <p className="cc-card__eyebrow">Profile</p>
+            <ConfigCard key={p.id} status={cardStatus(p.id === profile)} onClick={() => setProfile(p.id)}>
+              <p className="cc-card__eyebrow">Profile{active?.mission_profile === p.id ? ' · active' : ''}</p>
               <h3 className="cc-card__title">{p.id}</h3>
               <p className="cc-card__meta">{p.meta}</p>
             </ConfigCard>
@@ -155,12 +166,8 @@ export function Modes() {
         </div>
         <div className="cc-grid cc-grid--4">
           {BRAINS.map(b => (
-            <ConfigCard
-              key={b.id}
-              status={cardStatus(b.id === brain)}
-              onClick={() => setBrain(b.id)}
-            >
-              <p className="cc-card__eyebrow">Brain</p>
+            <ConfigCard key={b.id} status={cardStatus(b.id === brain)} onClick={() => setBrain(b.id)}>
+              <p className="cc-card__eyebrow">Brain{active?.brain === b.id ? ' · active' : ''}</p>
               <h3 className="cc-card__title">{b.id}</h3>
               <p className="cc-card__meta">{b.meta}</p>
             </ConfigCard>
@@ -172,9 +179,9 @@ export function Modes() {
       <section className="cc-section">
         <div className="cc-section__head">
           <h2 className="cc-section__title">Selected mode</h2>
-          <span className="cc-section__meta">review before activating</span>
+          <span className="cc-section__meta">{isActive ? 'this is the active mode' : 'review before activating'}</span>
         </div>
-        <ConfigCard status="warn">
+        <ConfigCard status={isActive ? 'ok' : 'warn'}>
           <div className="cc-card__head">
             <div>
               <p className="cc-card__eyebrow">Composed mode</p>
@@ -199,14 +206,23 @@ export function Modes() {
             </div>
           </div>
           <div className="cc-card__foot">
-            <Button kind="primary" size="md" renderIcon={Rocket} onClick={handleActivate}>
-              Activate mode
+            <Button
+              kind="primary"
+              size="md"
+              renderIcon={Rocket}
+              onClick={handleActivate}
+              disabled={activating || !!modeDoc.error || isActive}
+            >
+              {activating ? 'Activating…' : isActive ? 'Active' : 'Activate mode'}
             </Button>
-            <span className="cc-card__meta">mode-manager pending — OS-side wiring required</span>
+            <span className="cc-card__meta">
+              {modeDoc.error
+                ? 'os-control agent unreachable'
+                : 'saved to the Core Hub · rover-side mode-manager applies it (pending)'}
+            </span>
           </div>
         </ConfigCard>
       </section>
-
     </div>
   )
 }
