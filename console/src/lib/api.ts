@@ -166,6 +166,27 @@ export interface Settings {
   default_authority_lease_s: number
 }
 
+export type ServiceAction = 'start' | 'stop' | 'restart'
+
+/** Live systemd unit status from the Core Hub os-control agent. */
+export interface SystemService {
+  name: string          // systemd unit (e.g. module-registry.service)
+  active: string        // ActiveState: active | inactive | failed | activating | ...
+  sub: string           // SubState: running | dead | exited | ...
+  enabled: string       // UnitFileState: enabled | disabled | static
+  description: string
+}
+
+/** Result of a start/stop/restart action. */
+export interface ServiceActionResult {
+  name: string
+  action: ServiceAction
+  ok: boolean
+  active: string
+  sub: string
+  stderr: string
+}
+
 // ── Request body types ────────────────────────────────────────────────────────
 
 export interface CreateMissionBody {
@@ -325,6 +346,19 @@ export const ackSecurityEvent = (name: string): Promise<OkResponse> =>
 /** GET /api/settings — Command Center Settings singleton */
 export const settings = (): Promise<Settings> =>
   getJSON('/api/settings')
+
+// ── System services (Core Hub OS control) ─────────────────────────────────────
+
+/** GET /api/system/services — live systemd status for the allowlisted Core Hub units */
+export const systemServices = (): Promise<SystemService[]> =>
+  getJSON('/api/system/services')
+
+/** POST /api/system/service — start | stop | restart an allowlisted unit */
+export const systemServiceAction = (
+  name: string,
+  action: ServiceAction,
+): Promise<ServiceActionResult> =>
+  postJSON('/api/system/service', { name, action })
 
 // ── Command flow ──────────────────────────────────────────────────────────────
 // Reused from gateway.ts. Key stays in the OS keychain agent (see agent.ts);
