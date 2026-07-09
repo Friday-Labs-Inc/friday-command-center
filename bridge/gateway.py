@@ -392,7 +392,8 @@ def _os_control_headers() -> dict:
 def _require_os_control() -> None:
     """Fail closed: both the agent URL and its token must be configured, else the
     call would go out unauthenticated. Loud 503 beats a silent open path."""
-    _require_os_control()
+    if not OS_CONTROL_URL:
+        raise HTTPException(503, "os-control agent not configured (set OS_CONTROL_URL)")
     if not OS_CONTROL_TOKEN:
         raise HTTPException(503, "OS_CONTROL_TOKEN not configured — refusing to call the agent unauthenticated")
 
