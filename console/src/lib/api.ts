@@ -21,6 +21,16 @@ async function postJSON<T>(path: string, body: unknown): Promise<T> {
   return r.json() as Promise<T>
 }
 
+async function putJSON<T>(path: string, body: unknown): Promise<T> {
+  const r = await fetch(path, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!r.ok) throw new Error(`PUT ${path} -> ${r.status}: ${await r.text()}`)
+  return r.json() as Promise<T>
+}
+
 // ── Domain interfaces (verified DocType fields) ───────────────────────────────
 
 export interface Rover {
@@ -185,6 +195,30 @@ export interface ServiceActionResult {
   active: string
   sub: string
   stderr: string
+}
+
+/** The rover brain's SOUL.md (zero-day context) as stored on the Core Hub. */
+export interface SoulDoc {
+  path: string
+  exists: boolean
+  bytes: number
+  content: string
+}
+
+/** Result of persisting SOUL.md. */
+export interface SoulSaveResult {
+  ok: boolean
+  path: string
+  bytes: number
+}
+
+/** The active operating mode stored on the Core Hub. */
+export interface ActiveMode {
+  autonomy_level: number      // 0..3
+  mission_profile: string
+  brain: string
+  exists?: boolean            // false until first activated
+  updated?: string
 }
 
 // ── Request body types ────────────────────────────────────────────────────────
@@ -359,6 +393,28 @@ export const systemServiceAction = (
   action: ServiceAction,
 ): Promise<ServiceActionResult> =>
   postJSON('/api/system/service', { name, action })
+
+// ── Rover brain config (SOUL.md on the Core Hub) ──────────────────────────────
+
+/** GET /api/brain/soul — read the rover brain's stored SOUL.md */
+export const brainSoul = (): Promise<SoulDoc> =>
+  getJSON('/api/brain/soul')
+
+/** PUT /api/brain/soul — persist SOUL.md to the Core Hub (the deployed brain reads it) */
+export const saveBrainSoul = (content: string): Promise<SoulSaveResult> =>
+  putJSON('/api/brain/soul', { content })
+
+// ── Operating mode (autonomy × profile × brain) ───────────────────────────────
+
+/** GET /api/modes/active — the active operating mode stored on the Core Hub */
+export const activeMode = (): Promise<ActiveMode> =>
+  getJSON('/api/modes/active')
+
+/** PUT /api/modes/active — persist the active mode to the Core Hub */
+export const saveActiveMode = (
+  m: { autonomy_level: number; mission_profile: string; brain: string },
+): Promise<ActiveMode & { ok: boolean }> =>
+  putJSON('/api/modes/active', m)
 
 // ── Command flow ──────────────────────────────────────────────────────────────
 // Reused from gateway.ts. Key stays in the OS keychain agent (see agent.ts);
