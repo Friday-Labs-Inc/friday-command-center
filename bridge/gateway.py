@@ -15,6 +15,7 @@ Run (prod): ... uvicorn gateway:app --port 8443 --ssl-certfile certs/server.crt 
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 from contextlib import asynccontextmanager
 
@@ -206,9 +207,11 @@ async def ws(websocket: WebSocket):
 
 
 # ---- extended read + admin-write REST ----------------------------------------
-# NOTE: all admin writes below are token-auth'd via the Frappe control plane
-# (CP_KEY / CP_SECRET).  Per-operator RBAC inside the gateway is a documented
-# follow-up; it is out of scope for this phase.
+# NOTE: the fleet/mission/PKI writes below reach Frappe via the control plane
+# (CP_KEY / CP_SECRET). The OS-control + brain routes (/api/system/*, /api/brain/*)
+# use a SEPARATE model: a bearer token to the on-board os-control agent, which is
+# where their auth is enforced. Neither path yet does per-operator RBAC at the
+# gateway — that is a documented follow-up; the tailnet is the current perimeter.
 
 # -- Pydantic request bodies --
 
@@ -251,6 +254,10 @@ class AckEventBody(BaseModel):
 class ServiceActionBody(BaseModel):
     name: str
     action: str  # start | stop | restart
+
+
+class SoulBody(BaseModel):
+    content: str
 
 
 # -- fleet --
@@ -382,10 +389,17 @@ def _os_control_headers() -> dict:
     return {"Authorization": f"Bearer {OS_CONTROL_TOKEN}"} if OS_CONTROL_TOKEN else {}
 
 
+def _require_os_control() -> None:
+    """Fail closed: both the agent URL and its token must be configured, else the
+    call would go out unauthenticated. Loud 503 beats a silent open path."""
+    _require_os_control()
+    if not OS_CONTROL_TOKEN:
+        raise HTTPException(503, "OS_CONTROL_TOKEN not configured — refusing to call the agent unauthenticated")
+
+
 @app.get("/api/system/services")
 async def api_system_services():
-    if not OS_CONTROL_URL:
-        raise HTTPException(503, "os-control agent not configured (set OS_CONTROL_URL)")
+    _require_os_control()
     try:
         async with httpx.AsyncClient(timeout=8) as client:
             r = await client.get(f"{OS_CONTROL_URL}/services", headers=_os_control_headers())
@@ -396,8 +410,7 @@ async def api_system_services():
 
 @app.post("/api/system/service")
 async def api_system_service(body: ServiceActionBody):
-    if not OS_CONTROL_URL:
-        raise HTTPException(503, "os-control agent not configured (set OS_CONTROL_URL)")
+    _require_os_control()
     if body.action not in {"start", "stop", "restart"}:
         raise HTTPException(400, "action must be start|stop|restart")
     try:
@@ -406,6 +419,40 @@ async def api_system_service(body: ServiceActionBody):
                 f"{OS_CONTROL_URL}/service",
                 json={"name": body.name, "action": body.action},
                 headers=_os_control_headers(),
+            )
+    except httpx.RequestError as exc:
+        raise HTTPException(502, f"os-control agent unreachable: {exc}")
+    return Response(content=r.content, status_code=r.status_code, media_type="application/json")
+
+
+# -- rover brain config (SOUL.md on the Core Hub) --
+# Same edge-proxy pattern. The agent enforces the single fixed path + size cap.
+
+@app.get("/api/brain/soul")
+async def api_get_soul():
+    _require_os_control()
+    try:
+        async with httpx.AsyncClient(timeout=8) as client:
+            r = await client.get(f"{OS_CONTROL_URL}/config/soul", headers=_os_control_headers())
+    except httpx.RequestError as exc:
+        raise HTTPException(502, f"os-control agent unreachable: {exc}")
+    return Response(content=r.content, status_code=r.status_code, media_type="application/json")
+
+
+@app.put("/api/brain/soul")
+async def api_put_soul(body: SoulBody):
+    _require_os_control()
+    if len(body.content.encode("utf-8")) > 65536:
+        raise HTTPException(413, "SOUL.md exceeds 65536 bytes")
+    # Serialize with ensure_ascii=False so the agent measures the same UTF-8 byte
+    # count we validated (httpx json= would \u-escape and inflate multibyte text).
+    payload = json.dumps({"content": body.content}, ensure_ascii=False).encode("utf-8")
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.put(
+                f"{OS_CONTROL_URL}/config/soul",
+                content=payload,
+                headers={**_os_control_headers(), "Content-Type": "application/json"},
             )
     except httpx.RequestError as exc:
         raise HTTPException(502, f"os-control agent unreachable: {exc}")
