@@ -1,10 +1,14 @@
 // BridgeView — live 3D ROS 2 module-graph topology, THREE.js
 
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { useDeck, fleetSeats } from '../data'
 import type { Seat } from '../data'
+import { activeMode, type ActiveMode } from '../../lib/api'
 import { ViewHead, SimBadge, Legend } from '../bits'
+
+// Operating-mode ladder — index === autonomy_level (0..3), matches the Core Hub.
+const MODE_LABELS = ['MANUAL', 'ASSISTED', 'WAYPOINT', 'AUTONOMOUS']
 
 /* ── static extras (non-ESP32 architectural nodes) ─────────────────────────── */
 const EXTRAS: Array<{ short: string; color: number }> = [
@@ -51,6 +55,21 @@ export function BridgeView() {
   const labsRef  = useRef<HTMLDivElement>(null)
   const seatsRef = useRef(seats)
   useEffect(() => { seatsRef.current = seats }, [seats])
+
+  // Active operating mode — real, from /api/modes/active (the mode.json store on
+  // the Core Hub). `null` + modeErr when the Core Hub is offline (honest state).
+  const [mode, setMode] = useState<ActiveMode | null>(null)
+  const [modeErr, setModeErr] = useState(false)
+  useEffect(() => {
+    let alive = true
+    const load = () =>
+      activeMode()
+        .then((m) => { if (alive) { setMode(m); setModeErr(false) } })
+        .catch(() => { if (alive) { setMode(null); setModeErr(true) } })
+    load()
+    const t = setInterval(load, 10000)
+    return () => { alive = false; clearInterval(t) }
+  }, [])
 
   const liveCount = modules?.filter(m => m.liveness === 'OK').length ?? 0
   const regCount  = modules?.length ?? 0
@@ -258,17 +277,28 @@ export function BridgeView() {
         sub={<>{liveCount} live · {regCount} registered · authority held</>}
       />
 
-      {/* Operating-mode pills — bottom-right stack */}
+      {/* Operating-mode pills — reflect the REAL active mode (mode.json on the Core Hub) */}
       <div style={{
         position: 'absolute', right: 18, bottom: 36,
         display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6,
       }}>
-        <span className="dk-pill">MANUAL</span>
-        <span className="dk-pill">ASSISTED</span>
-        <span className="dk-pill hot">WAYPOINT</span>
-        <span className="dk-pill ai">AUTONOMOUS</span>
-        <div style={{ marginTop: 8 }}>
-          <SimBadge label="MODE PREVIEW · NOT YET WIRED" />
+        {MODE_LABELS.map((label, i) => {
+          const active = mode?.exists !== false && mode?.autonomy_level === i
+          const cls = active ? 'dk-pill hot' : i === 3 ? 'dk-pill ai' : 'dk-pill'
+          return <span key={label} className={cls}>{label}</span>
+        })}
+        <div style={{ marginTop: 8, textAlign: 'right' }}>
+          {modeErr ? (
+            <SimBadge label="CORE HUB OFFLINE · MODE UNKNOWN" />
+          ) : mode == null ? (
+            <span style={{ fontFamily: 'var(--mono)', fontSize: 8.5, color: 'var(--dim)', letterSpacing: '0.14em' }}>READING MODE…</span>
+          ) : mode.exists === false ? (
+            <SimBadge label="NO MODE ACTIVATED YET" />
+          ) : (
+            <span style={{ fontFamily: 'var(--mono)', fontSize: 8.5, color: 'var(--ice)', letterSpacing: '0.1em' }}>
+              profile {mode.mission_profile} · brain {mode.brain}
+            </span>
+          )}
         </div>
       </div>
 
