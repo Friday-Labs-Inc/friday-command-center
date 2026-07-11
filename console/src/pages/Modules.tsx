@@ -1,9 +1,11 @@
 // Modules — module registry for the Friday Labs OS control panel.
-// Shows every module configured to connect to the Core Hub, with live status
-// for the ones actively reporting. Registration is automatic via the ROS
-// module-agent; the "Register module" button surfaces that explanation.
+// The "Registered" section is LIVE: it polls the Core Hub's registry snapshot
+// (core_hub exports /var/lib/friday/registry.json → os-control agent →
+// gateway /api/modules/registry). Liveness colors mirror the health monitor:
+// OK (heartbeats current) / DEGRADED / DEAD. Registration is automatic via the
+// ROS module-agent; the "Register module" button surfaces that explanation.
 
-import { useState, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   Button,
   ComposedModal,
@@ -11,9 +13,12 @@ import {
   ModalBody,
   ModalFooter,
   ToastNotification,
+  InlineNotification,
+  SkeletonPlaceholder,
 } from '@carbon/react'
-import { Add, Chip, Microscope, Rocket, Satellite } from '@carbon/icons-react'
+import { Add, Chip, Microscope, Rocket, Satellite, Debug } from '@carbon/icons-react'
 import { ConfigCard, type CardStatus } from '../components/ConfigCard'
+import { modulesRegistry, type RegistryModule } from '../lib/api'
 
 // ── Local helpers ────────────────────────────────────────────────────────────
 
@@ -27,11 +32,84 @@ function Dot({ status }: { status: CardStatus }) {
   return <span className={`cc-dot ${cls}`} aria-hidden="true" />
 }
 
+const LIVENESS_STATUS: Record<RegistryModule['liveness'], CardStatus> = {
+  OK: 'ok',
+  DEGRADED: 'warn',
+  DEAD: 'err',
+  UNKNOWN: 'off',
+}
+
+const LIVENESS_LABEL: Record<RegistryModule['liveness'], string> = {
+  OK: 'live · heartbeats current',
+  DEGRADED: 'degraded · heartbeats late',
+  DEAD: 'dead · no heartbeats',
+  UNKNOWN: 'unknown',
+}
+
+function typeIcon(hw: string) {
+  const cls = 'cc-card__icon'
+  if (hw === 'locomotion') return <Chip size={20} className={cls} />
+  if (hw === 'aerial_bay') return <Rocket size={20} className={cls} />
+  if (hw === 'sensor') return <Microscope size={20} className={cls} />
+  if (hw === 'telemetry') return <Satellite size={20} className={cls} />
+  if (hw === 'test') return <Debug size={20} className={cls} />
+  return <Chip size={20} className={cls} />
+}
+
+function LiveModuleCard({ m }: { m: RegistryModule }) {
+  const status = LIVENESS_STATUS[m.liveness] ?? 'off'
+  return (
+    <ConfigCard status={status}>
+      <div className="cc-card__head">
+        <div>
+          <p className="cc-card__eyebrow">{m.hardware_type} · protocol {m.protocol}</p>
+          <h3 className="cc-card__title">{m.module_id}</h3>
+        </div>
+        {typeIcon(m.hardware_type)}
+      </div>
+      <div className="cc-card__body">
+        <div className="cc-kv">
+          <span className="cc-kv__k">Status</span>
+          <span className="cc-kv__v">
+            <Dot status={status} />
+            {LIVENESS_LABEL[m.liveness] ?? m.liveness}
+          </span>
+        </div>
+        <div className="cc-kv">
+          <span className="cc-kv__k">Heartbeat</span>
+          <span className="cc-kv__v">
+            {m.heartbeat_age_s == null ? '—' : `${m.heartbeat_age_s.toFixed(1)} s ago`}
+          </span>
+        </div>
+        <div className="cc-kv">
+          <span className="cc-kv__k">Namespace</span>
+          <span className="cc-kv__v"><code>{m.namespace}</code></span>
+        </div>
+        <div className="cc-kv">
+          <span className="cc-kv__k">Capabilities</span>
+          <span className="cc-kv__v">{m.capabilities.join(' · ') || '—'}</span>
+        </div>
+        <div className="cc-kv">
+          <span className="cc-kv__k">Firmware</span>
+          <span className="cc-kv__v">{m.fw_version} · sw {m.sw_version}</span>
+        </div>
+      </div>
+      <div className="cc-card__foot">
+        <p className="cc-card__meta">registered with the Core Hub module-registry</p>
+      </div>
+    </ConfigCard>
+  )
+}
+
 // ── Page ─────────────────────────────────────────────────────────────────────
 
+const POLL_MS = 5000
+
 export function Modules() {
-  const [modalOpen, setModalOpen]   = useState(false)
-  const [toast,     setToast]       = useState(false)
+  const [modalOpen, setModalOpen] = useState(false)
+  const [toast, setToast] = useState(false)
+  const [modules, setModules] = useState<RegistryModule[] | null>(null)
+  const [regError, setRegError] = useState<string | null>(null)
 
   const openModal  = useCallback(() => setModalOpen(true),  [])
   const closeModal = useCallback(() => setModalOpen(false), [])
@@ -41,6 +119,25 @@ export function Modules() {
     setModalOpen(false)
     setToast(true)
     setTimeout(() => setToast(false), 6000)
+  }, [])
+
+  // Live registry poll.
+  useEffect(() => {
+    let alive = true
+    const load = () =>
+      modulesRegistry()
+        .then((snap) => {
+          if (!alive) return
+          setModules(snap.modules)
+          setRegError(null)
+        })
+        .catch((e: Error) => {
+          if (!alive) return
+          setRegError(e.message)
+        })
+    load()
+    const t = setInterval(load, POLL_MS)
+    return () => { alive = false; clearInterval(t) }
   }, [])
 
   return (
@@ -66,60 +163,61 @@ export function Modules() {
           <div>
             <h1 className="cc-pagehead__title">Module registry</h1>
             <p className="cc-pagehead__sub">
-              Every module that registers with the Core Hub.
+              Every module that registers with the Core Hub, with live liveness
+              from its 5 Hz heartbeat.
             </p>
           </div>
-          <Button kind="tertiary" renderIcon={Add} onClick={openModal}>
+          <Button kind="primary" size="md" renderIcon={Add} onClick={openModal}>
             Register module
           </Button>
         </div>
       </header>
 
-      {/* ── Modules ─────────────────────────────────────────────────────────── */}
+      {/* ── Live registry ──────────────────────────────────────────────────── */}
       <section className="cc-section">
-        <div className="cc-section__head">
-          <h2 className="cc-section__title">Modules</h2>
-          <span className="cc-section__meta">4 configured · 1 live</span>
-        </div>
-        <div className="cc-grid cc-grid--2">
-
-          {/* ── Locomotion Control Unit ───────────────────────────────────── */}
-          <ConfigCard status="ok">
+        <h2 className="cc-section__title">Registered with the Core Hub</h2>
+        {regError && (
+          <InlineNotification
+            kind="warning"
+            lowContrast
+            hideCloseButton
+            title="Registry unreachable"
+            subtitle={`Live data unavailable — ${regError}`}
+            style={{ marginBottom: 'var(--cds-spacing-05)' }}
+          />
+        )}
+        {modules === null && !regError && (
+          <SkeletonPlaceholder style={{ width: '100%', height: '10rem' }} />
+        )}
+        {modules !== null && modules.length === 0 && (
+          <ConfigCard status="off">
             <div className="cc-card__head">
               <div>
-                <p className="cc-card__eyebrow">ESP32-WROOM-32 · MARK1-LOCO</p>
-                <h3 className="cc-card__title">Locomotion Control Unit</h3>
+                <p className="cc-card__eyebrow">registry empty</p>
+                <h3 className="cc-card__title">No modules registered</h3>
               </div>
               <Chip size={20} className="cc-card__icon" />
             </div>
             <div className="cc-card__body">
-              <div className="cc-kv">
-                <span className="cc-kv__k">Status</span>
-                <span className="cc-kv__v"><Dot status="ok" />Live · bench</span>
-              </div>
-              <div className="cc-kv">
-                <span className="cc-kv__k">Transport</span>
-                <span className="cc-kv__v">micro-ROS · UART @115200</span>
-              </div>
-              <div className="cc-kv">
-                <span className="cc-kv__k">Capabilities</span>
-                <span className="cc-kv__v">drive · steer · safe-stop</span>
-              </div>
-              <div className="cc-kv">
-                <span className="cc-kv__k">Heartbeat</span>
-                <span className="cc-kv__v">1 Hz</span>
-              </div>
-              <div className="cc-kv">
-                <span className="cc-kv__k">Domain</span>
-                <span className="cc-kv__v">ROS 42</span>
-              </div>
-            </div>
-            <div className="cc-card__foot">
-              <p className="cc-card__meta">
-                board <code>8c:94:df</code> on the Core Hub graph
+              <p style={{ fontSize: '0.875rem', lineHeight: '1.5rem', color: 'var(--cds-text-secondary)' }}>
+                Modules self-register when they connect and are configured by the
+                Core Hub. The registry is in-memory — it clears when the Core Hub
+                restarts, and repopulates as modules re-register.
               </p>
             </div>
           </ConfigCard>
+        )}
+        {modules !== null && modules.length > 0 && (
+          <div className="cc-grid">
+            {modules.map((m) => <LiveModuleCard key={m.module_id} m={m} />)}
+          </div>
+        )}
+      </section>
+
+      {/* ── Planned hardware (not yet connected) ───────────────────────────── */}
+      <section className="cc-section">
+        <h2 className="cc-section__title">Planned · not yet connected</h2>
+        <div className="cc-grid">
 
           {/* ── Environmental sensors (Research Deck) ────────────────────── */}
           <ConfigCard status="off">
@@ -142,26 +240,6 @@ export function Modules() {
             </div>
             <div className="cc-card__foot">
               <p className="cc-card__meta">arrives with the Research Deck</p>
-            </div>
-          </ConfigCard>
-
-          {/* ── Aerial Companion Bay ──────────────────────────────────────── */}
-          <ConfigCard status="off">
-            <div className="cc-card__head">
-              <div>
-                <p className="cc-card__eyebrow">ESP32-S3 · planned</p>
-                <h3 className="cc-card__title">Aerial Companion Bay</h3>
-              </div>
-              <Rocket size={20} className="cc-card__icon" />
-            </div>
-            <div className="cc-card__body">
-              <div className="cc-kv">
-                <span className="cc-kv__k">Status</span>
-                <span className="cc-kv__v"><Dot status="off" />off · spec only</span>
-              </div>
-            </div>
-            <div className="cc-card__foot">
-              <p className="cc-card__meta">V-cradle · servo lock · 8 interlocks</p>
             </div>
           </ConfigCard>
 
@@ -194,9 +272,9 @@ export function Modules() {
         <ModalBody>
           <p style={{ fontSize: '0.875rem', lineHeight: '1.5rem', marginBottom: 'var(--cds-spacing-05)', color: 'var(--cds-text-primary)' }}>
             Registration is <strong>automatic</strong>. When a module connects to
-            the Core Hub via micro-ROS or UART, the ROS module-agent reads its
-            capability advertisement and enrolls it in the registry within one
-            heartbeat interval.
+            the Core Hub via micro-ROS or UART, it fires a RegisterModule request
+            during its lifecycle <code>configure</code> step and enrolls itself in
+            the registry.
           </p>
           <p style={{ fontSize: '0.875rem', lineHeight: '1.5rem', color: 'var(--cds-text-secondary)' }}>
             To bring a new module online: flash its firmware with the correct{' '}

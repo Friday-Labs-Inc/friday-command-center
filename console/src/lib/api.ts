@@ -404,6 +404,30 @@ export const brainSoul = (): Promise<SoulDoc> =>
 export const saveBrainSoul = (content: string): Promise<SoulSaveResult> =>
   putJSON('/api/brain/soul', { content })
 
+// ── Module registry (Core Hub) ────────────────────────────────────────────────
+
+export interface RegistryModule {
+  module_id: string
+  hardware_type: string
+  sw_version: string
+  fw_version: string
+  capabilities: string[]
+  namespace: string
+  protocol: string
+  liveness: 'OK' | 'DEGRADED' | 'DEAD' | 'UNKNOWN'
+  heartbeat_age_s: number | null
+}
+
+export interface RegistrySnapshot {
+  exists: boolean
+  updated_unix: number | null
+  modules: RegistryModule[]
+}
+
+/** GET /api/modules/registry — live module registry exported by the Core Hub */
+export const modulesRegistry = (): Promise<RegistrySnapshot> =>
+  getJSON('/api/modules/registry')
+
 // ── Operating mode (autonomy × profile × brain) ───────────────────────────────
 
 /** GET /api/modes/active — the active operating mode stored on the Core Hub */

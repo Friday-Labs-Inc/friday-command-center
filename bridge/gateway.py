@@ -470,6 +470,19 @@ async def api_put_soul(body: SoulBody):
 # The agent validates against fixed allowlists + persists atomically. The rover-side
 # mode-manager that ACTS on the mode is a separate node (documented follow-up).
 
+@app.get("/api/modules/registry")
+async def api_modules_registry():
+    """Live module registry snapshot (registered modules + liveness), exported
+    by the Core Hub and served read-only by the os-control agent."""
+    _require_os_control()
+    try:
+        async with httpx.AsyncClient(timeout=8) as client:
+            r = await client.get(f"{OS_CONTROL_URL}/registry", headers=_os_control_headers())
+    except httpx.RequestError as exc:
+        raise HTTPException(502, f"os-control agent unreachable: {exc}")
+    return Response(content=r.content, status_code=r.status_code, media_type="application/json")
+
+
 @app.get("/api/modes/active")
 async def api_get_mode():
     _require_os_control()
