@@ -25,6 +25,22 @@ from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSoc
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+
+class SPAStaticFiles(StaticFiles):
+    """Serve the built SPA with a single-page-app fallback: any path that isn't
+    a real static file (e.g. client-side routes /brain, /system, /deck/terrain)
+    returns index.html so the React router can handle it, instead of a 404.
+    API routes are registered before this mount, so they still take precedence."""
+
+    async def get_response(self, path, scope):
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            if exc.status_code == 404:
+                return await super().get_response("index.html", scope)
+            raise
 
 import envelope as env
 from control_plane import ControlPlane
@@ -512,7 +528,7 @@ async def api_put_mode(body: ModeBody):
 
 # ---- SPA serving (mounted LAST so it never shadows the routes above) ----
 if os.path.isfile(os.path.join(DIST, "index.html")):
-    app.mount("/", StaticFiles(directory=DIST, html=True), name="spa")
+    app.mount("/", SPAStaticFiles(directory=DIST, html=True), name="spa")
 else:
     app.mount("/static", StaticFiles(directory=os.path.join(HERE, "static")), name="static")
 
