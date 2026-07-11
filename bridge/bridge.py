@@ -15,6 +15,7 @@ import json
 import time
 from datetime import datetime
 
+import cbor2
 import paho.mqtt.client as mqtt
 
 import envelope as env
@@ -31,8 +32,8 @@ _SEVERITY = {
 }
 
 
-def _dt(unix_s: float) -> str:
-    return datetime.fromtimestamp(unix_s).strftime("%Y-%m-%d %H:%M:%S")
+def _dt(unix_ms: int) -> str:
+    return datetime.fromtimestamp(unix_ms / 1000).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _rover_from_topic(topic: str) -> str | None:
@@ -66,11 +67,11 @@ class CommandCenterBridge:
     # ---- command path -----------------------------------------------------
     def send_command(self, *, rover, operator, command_class, payload, operator_private_key):
         nonce = self.cp.issue_nonce(rover, operator)
-        issued = time.time()
-        expires = issued + env.DEFAULT_EXPIRY_S
+        issued = int(time.time() * 1000)
+        expires = issued + env.DEFAULT_EXPIRY_MS
         envel = env.build_envelope(
             rover_id=rover, sender_id=operator, msg_id=nonce, nonce=nonce,
-            issued_at=issued, expires_at=expires, payload=payload,
+            issued_at=issued, expires_at=expires, payload=cbor2.dumps(payload),
             private_key=operator_private_key,
         )
         self.client.publish(f"mark1/{rover}/cmd/{command_class}", env.encode(envel), qos=1)
