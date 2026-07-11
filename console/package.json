@@ -11,10 +11,13 @@
   "dependencies": {
     "@carbon/icons-react": "^11",
     "@carbon/react": "^1.111.1",
+    "@types/three": "^0.170.0",
+    "framer-motion": "^12.42.2",
     "maplibre-gl": "^4.7.1",
     "react": "^19",
     "react-dom": "^19",
-    "react-router-dom": "^6"
+    "react-router-dom": "^6",
+    "three": "^0.170.0"
   },
   "devDependencies": {
     "@types/react": "^19",
