@@ -1,11 +1,10 @@
 // FCC 2030 Command Deck — the flagship shell. Top status rail, nav, live
-// telemetry column, event stream. Views render in the center with
-// framer-motion transitions. Real data: module registry + gateway latency.
-// Concept data (authority lease, brain, safe-stop figures) states its source.
+// telemetry column, event stream. Views render in the center with a CSS
+// keyframe enter (keyed on route). Real data: module registry + gateway
+// latency. Concept data (authority lease, brain, safe-stop) states its source.
 
 import { useEffect, useMemo, useState } from 'react'
 import { NavLink, Route, Routes, useLocation } from 'react-router-dom'
-import { AnimatePresence, motion } from 'framer-motion'
 import './deck.scss'
 import { DeckContext, fleetSeats, stateDot, useDeck, useDeckDataSource } from './data'
 import { Panel } from './bits'
@@ -189,27 +188,22 @@ function Stream() {
   )
 }
 
-const viewMotion = {
-  initial: { opacity: 0, y: 14, scale: 0.992 },
-  animate: { opacity: 1, y: 0, scale: 1 },
-  exit: { opacity: 0, y: -8, scale: 0.996 },
-  transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] as const },
-}
-
 function DeckMain() {
   const location = useLocation()
+  // Keyed wrapper → remounts per route, replaying the CSS enter animation.
+  // (A declarative CSS keyframe always resolves to the visible end state; the
+  // previous framer-motion AnimatePresence could stick at opacity 0 when the
+  // deck's frequent state updates interrupted the JS-driven enter animation.)
   return (
     <main className="dk-main">
-      <AnimatePresence mode="wait">
-        <motion.div key={location.pathname} style={{ position: 'absolute', inset: 0 }} {...viewMotion}>
-          <Routes location={location}>
-            <Route index element={<BridgeView />} />
-            <Route path="modules" element={<ModulesView />} />
-            <Route path="missions" element={<MissionsView />} />
-            <Route path="terrain" element={<TerrainView />} />
-          </Routes>
-        </motion.div>
-      </AnimatePresence>
+      <div key={location.pathname} className="dk-view">
+        <Routes location={location}>
+          <Route index element={<BridgeView />} />
+          <Route path="modules" element={<ModulesView />} />
+          <Route path="missions" element={<MissionsView />} />
+          <Route path="terrain" element={<TerrainView />} />
+        </Routes>
+      </div>
       <div className="dk-scanline" />
     </main>
   )

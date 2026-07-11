@@ -37,17 +37,19 @@ export function TerrainView() {
     const iv = setInterval(() => {
       setSeg(s => Math.min(s + Math.floor(Math.random() * 14 + 8), 1284))
       setPts(p => Math.min(p + Math.floor(Math.random() * 7200 + 3800), 8_300_000))
-      setCov(c => {
-        const n = Math.min(c + Math.random() * 0.9 + 0.3, 87)
-        if (n >= 50 && !gated.current) {
-          gated.current = true
-          pushRef.current('research', 'MapSegment stream · gate passed', 'ai')
-        }
-        return n
-      })
+      setCov(c => Math.min(c + Math.random() * 0.9 + 0.3, 87))
     }, 280)
     return () => clearInterval(iv)
   }, [])
+
+  // Gate-crossing event fires from an effect (never from inside a setState
+  // updater — that runs during render and would setState another component).
+  useEffect(() => {
+    if (cov >= 50 && !gated.current) {
+      gated.current = true
+      pushRef.current('research', 'MapSegment stream · gate passed', 'ai')
+    }
+  }, [cov])
 
   useEffect(() => {
     // `!` keeps the non-null type inside the hoisted prj() closure below

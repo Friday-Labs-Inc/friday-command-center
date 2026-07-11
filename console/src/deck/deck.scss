@@ -139,6 +139,14 @@
 
 // ═══ main viewport ═══
 .dk-main { grid-area: main; position: relative; overflow: hidden; background: var(--void-2); }
+.dk-view {
+  // No enter transition — views render instantly and are always visible. The
+  // motion in the deck lives in the content (3D scenes, heartbeats, stream),
+  // not in view swaps. (A JS/CSS enter animation could stick invisible under
+  // the deck's frequent re-renders + this render context's throttling.)
+  position: absolute;
+  inset: 0;
+}
 .dk-scanline {
   position: absolute; inset: 0; pointer-events: none; z-index: 4;
   background: repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.014) 0 1px, transparent 1px 3px);
