@@ -455,3 +455,22 @@ export const signBytes = (envelope: unknown): Promise<SignBytesResponse> =>
 /** POST /api/command — dispatch a signed command envelope */
 export const sendCommand = (envelope: unknown, signature: string): Promise<CommandResponse> =>
   postJSON('/api/command', { envelope, signature })
+
+// ── Telemetry recorder (gateway-local, data plane) ────────────────────────────
+
+export interface TelemetrySample {
+  ts: number
+  data: Record<string, unknown> | null
+  verified: boolean | null
+  age_s?: number
+}
+export interface TelemetryLatest { rover: string; kinds: Record<string, TelemetrySample> }
+export interface TelemetryHistory { rover: string; kind: string; samples: TelemetrySample[] }
+
+/** GET /api/telemetry/latest — freshest recorded sample per sensor kind */
+export const telemetryLatest = (rover: string): Promise<TelemetryLatest> =>
+  getJSON(`/api/telemetry/latest?rover=${encodeURIComponent(rover)}`)
+
+/** GET /api/telemetry/history — recent samples of one kind (sparkline food) */
+export const telemetryHistory = (rover: string, kind: string, limit = 120): Promise<TelemetryHistory> =>
+  getJSON(`/api/telemetry/history?rover=${encodeURIComponent(rover)}&kind=${encodeURIComponent(kind)}&limit=${limit}`)

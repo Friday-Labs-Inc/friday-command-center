@@ -12,6 +12,7 @@ import { BridgeView } from './views/BridgeView'
 import { ModulesView } from './views/ModulesView'
 import { MissionsView } from './views/MissionsView'
 import { TerrainView } from './views/TerrainView'
+import { EnvironmentView } from './views/EnvironmentView'
 
 // ── nav icons (inline, stroke-only) ──────────────────────────────────────────
 const I = {
@@ -36,6 +37,12 @@ const I = {
   terrain: (
     <svg viewBox="0 0 16 16" fill="none" stroke="currentColor">
       <path d="M1.5 12.5 5 6l2.5 4L11 4l3.5 8.5z" /><path d="M1.5 12.5h13" opacity=".5" />
+    </svg>
+  ),
+  environment: (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor">
+      <path d="M6 2v7.2a3 3 0 1 0 4 0V2z" /><path d="M8 5v6" opacity=".6" />
+      <circle cx="8" cy="11.5" r="1.1" fill="currentColor" />
     </svg>
   ),
   config: (
@@ -97,6 +104,7 @@ function Nav() {
     ['modules', 'Modules', 'modules'],
     ['missions', 'Missions', 'missions'],
     ['terrain', 'Terrain', 'terrain'],
+    ['environment', 'Environment', 'environment'],
   ]
   return (
     <nav className="dk-nav" aria-label="Deck navigation">
@@ -202,6 +210,7 @@ function DeckMain() {
           <Route path="modules" element={<ModulesView />} />
           <Route path="missions" element={<MissionsView />} />
           <Route path="terrain" element={<TerrainView />} />
+          <Route path="environment" element={<EnvironmentView />} />
         </Routes>
       </div>
       <div className="dk-scanline" />
