@@ -82,12 +82,28 @@ function paintSpark(cv: HTMLCanvasElement, values: number[], color: string, t: n
   g.globalAlpha = 1
 }
 
+function fmtOrDash(v: unknown, fmt: (n: number) => string) {
+  return typeof v === 'number' && Number.isFinite(v)
+    ? fmt(v)
+    : <span style={{ opacity: 0.4 }}>——</span>
+}
+
+// Tilt is the one number an operator reads as a warning: green level, amber
+// leaning, red near roll-over. Thresholds are advisory, not a safety gate.
+function tiltColor(v: unknown) {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return 'var(--dim, #5a7396)'
+  if (v > 35) return '#ff4d6a'
+  if (v > 15) return '#ffb454'
+  return '#3be896'
+}
+
 // ── view ──────────────────────────────────────────────────────────────────────
 
 export function EnvironmentView() {
   const { pushEvent } = useDeck()
   const [env, setEnv] = useState<TelemetrySample | undefined>(undefined)
   const [gps, setGps] = useState<TelemetrySample | undefined>(undefined)
+  const [imu, setImu] = useState<TelemetrySample | undefined>(undefined)
   const [error, setError] = useState(false)
   const canvasRefs = useRef<(HTMLCanvasElement | null)[]>([])
   const histRef = useRef<Map<string, number[]>>(new Map())
@@ -104,6 +120,7 @@ export function EnvironmentView() {
         const g = latest.kinds['gps']
         setEnv(e)
         setGps(g)
+        setImu(latest.kinds['imu'])
 
         // stream events on real transitions only
         const link = linkOf(e, false)
@@ -155,8 +172,10 @@ export function EnvironmentView() {
 
   const envLink = linkOf(env, error)
   const gpsLink = linkOf(gps, error)
+  const imuLink = linkOf(imu, error)
   const envData = (env?.data ?? {}) as Record<string, unknown>
   const gpsData = (gps?.data ?? {}) as Record<string, unknown>
+  const imuData = (imu?.data ?? {}) as Record<string, unknown>
   const presence = envLink === 'ok' || envLink === 'stale' ? Boolean(envData['presence']) : null
 
   const chip = ([cls, label]: [string, string], age?: number) => (
@@ -215,6 +234,43 @@ export function EnvironmentView() {
             <div style={{ padding: '10px 2px', fontSize: 12, opacity: 0.6 }}>
               {gpsLink === 'unreachable' ? 'telemetry gateway unreachable'
                 : 'no GPS telemetry recorded — rover publisher not deployed yet'}
+            </div>
+          )}
+        </Panel>
+
+        <Panel title="MOTION · PHONE POD" meta={<>{chip(LINK_CHIP[imuLink], imu?.age_s)} {sigChip(imu)}</>}>
+          {imuLink === 'ok' || imuLink === 'stale' ? (
+            <div style={{ padding: '6px 2px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                <div>
+                  <div style={{ fontSize: 10, opacity: 0.55, letterSpacing: '.08em' }}>TILT</div>
+                  <div style={{ fontSize: 22, fontWeight: 600, color: tiltColor(imuData['tilt_deg']) }}>
+                    {fmtOrDash(imuData['tilt_deg'], v => `${v.toFixed(1)}°`)}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 10, opacity: 0.55, letterSpacing: '.08em' }}>HEADING</div>
+                  <div style={{ fontSize: 22, fontWeight: 600, color: '#48e5f2' }}>
+                    {fmtOrDash(imuData['heading_deg'], v => `${v.toFixed(0)}°M`)}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 10, opacity: 0.55, letterSpacing: '.08em' }}>VIBRATION</div>
+                  <div style={{ fontSize: 22, fontWeight: 600, color: '#b18cff' }}>
+                    {fmtOrDash(imuData['vibration_rms'], v => v.toFixed(2))}
+                  </div>
+                </div>
+              </div>
+              <div style={{ fontSize: 11, opacity: 0.55, marginTop: 8, lineHeight: 1.5 }}>
+                backup attitude reference — advisory. 10 Hz over WiFi, magnetic heading,
+                uncalibrated: <b>NOT localization-grade</b>. The wired IMU owns the filter;
+                this answers “what state did it stop in”.
+              </div>
+            </div>
+          ) : (
+            <div style={{ padding: '10px 2px', fontSize: 12, opacity: 0.6 }}>
+              {imuLink === 'unreachable' ? 'telemetry gateway unreachable'
+                : 'no attitude telemetry recorded — phone pod away or HyperIMU stopped'}
             </div>
           )}
         </Panel>
