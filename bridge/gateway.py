@@ -99,7 +99,7 @@ class Hub:
 hub = Hub()
 _rover_keys: dict = {}  # rover_id -> Ed25519PublicKey (telemetry signing)
 # sensor kinds worth remembering (odom = pose; env/gps = the world-sense pods)
-RECORDED_KINDS = ("env", "gps", "odom")
+RECORDED_KINDS = ("env", "gps", "odom", "imu")
 _TLM = TelemetryStore(STATE_DIR)
 
 
@@ -147,6 +147,7 @@ def _event(topic: str, payload: bytes):
                 "data": msg.get("data"), "verified": True}
     kind = ("odom" if "/tlm/odom" in topic else "fault" if "/tlm/fault" in topic
             else "env" if "/tlm/env" in topic else "gps" if "/tlm/gps" in topic
+            else "imu" if "/tlm/imu" in topic
             else "ack" if "/ack/" in topic else "telemetry")
     return {"kind": kind, "rover": rover, "topic": topic, "data": msg,
             "verified": (False if "/tlm/" in topic else None)}
