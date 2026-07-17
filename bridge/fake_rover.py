@@ -55,6 +55,18 @@ class FakeRover:
         """Publish odometry telemetry on tlm/odom."""
         self._publish_tlm("odom", {"x": x, "y": y, "theta": theta})
 
+    def emit_env(self, temperature_c, humidity_pct, pressure_hpa, light_lux, presence):
+        """Publish env-pod readings on tlm/env (SensorHub payload shape)."""
+        self._publish_tlm("env", {
+            "temperature_c": temperature_c, "humidity_pct": humidity_pct,
+            "pressure_hpa": pressure_hpa, "light_lux": light_lux,
+            "presence": bool(presence)})
+
+    def emit_gps(self, lat, lon, alt_m, fix, sats):
+        """Publish phone-pod GPS on tlm/gps."""
+        self._publish_tlm("gps", {
+            "lat": lat, "lon": lon, "alt_m": alt_m, "fix": fix, "sats": sats})
+
     def _publish_tlm(self, kind, data):
         # Sign the telemetry if a signing key is configured; else publish raw (legacy).
         msg = env.sign_telemetry(self.rover_id, kind, data, self._signing_key) if self._signing_key else data

@@ -45,6 +45,7 @@ class SPAStaticFiles(StaticFiles):
 import envelope as env
 from control_plane import ControlPlane
 from edge_cache import EdgeCache
+from telemetry_store import TelemetryStore
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CERTS = os.path.join(HERE, "certs")
@@ -96,6 +97,9 @@ class Hub:
 
 hub = Hub()
 _rover_keys: dict = {}  # rover_id -> Ed25519PublicKey (telemetry signing)
+# sensor kinds worth remembering (odom = pose; env/gps = the world-sense pods)
+RECORDED_KINDS = ("env", "gps", "odom")
+_TLM = TelemetryStore(STATE_DIR)
 
 
 async def _refresh_rover_keys():
@@ -127,6 +131,7 @@ def _event(topic: str, payload: bytes):
         return {"kind": msg.get("kind"), "rover": rover, "topic": topic,
                 "data": msg.get("data"), "verified": True}
     kind = ("odom" if "/tlm/odom" in topic else "fault" if "/tlm/fault" in topic
+            else "env" if "/tlm/env" in topic else "gps" if "/tlm/gps" in topic
             else "ack" if "/ack/" in topic else "telemetry")
     return {"kind": kind, "rover": rover, "topic": topic, "data": msg,
             "verified": (False if "/tlm/" in topic else None)}
@@ -146,6 +151,9 @@ async def _mqtt_loop():
                 async for message in client.messages:
                     ev = _event(str(message.topic), message.payload)
                     if ev is not None:
+                        if ev.get("kind") in RECORDED_KINDS and ev.get("data") is not None:
+                            await asyncio.to_thread(
+                                _TLM.add, ev["rover"], ev["kind"], ev["data"], ev["verified"])
                         await hub.broadcast(ev)
         except Exception as exc:  # noqa: BLE001
             print("gateway mqtt loop error, retrying:", exc)
@@ -395,6 +403,27 @@ async def api_ack_security_event(body: AckEventBody):
 
 
 # -- settings --
+
+@app.get("/api/telemetry/latest")
+async def api_telemetry_latest(rover: str):
+    """Freshest recorded sample per sensor kind (age included, honesty first)."""
+    import time as _time
+    now = _time.time()
+    out = {}
+    for kind in await asyncio.to_thread(_TLM.kinds, rover):
+        sample = await asyncio.to_thread(_TLM.latest, rover, kind)
+        if sample is not None:
+            out[kind] = {**sample, "age_s": round(now - sample["ts"], 1)}
+    return {"rover": rover, "kinds": out}
+
+
+@app.get("/api/telemetry/history")
+async def api_telemetry_history(rover: str, kind: str, limit: int = 120):
+    if kind not in RECORDED_KINDS:
+        raise HTTPException(400, f"kind must be one of {RECORDED_KINDS}")
+    samples = await asyncio.to_thread(_TLM.recent, rover, kind, min(max(limit, 1), 720))
+    return {"rover": rover, "kind": kind, "samples": samples}
+
 
 @app.get("/api/settings")
 async def api_settings():
