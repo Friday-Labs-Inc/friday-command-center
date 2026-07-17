@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import time
 from contextlib import asynccontextmanager
 
 import aiomqtt
@@ -123,6 +124,20 @@ def _event(topic: str, payload: bytes):
         msg = env.decode(payload)
     except Exception:  # noqa: BLE001
         return {"kind": "telemetry", "rover": rover, "topic": topic, "data": None, "verified": None}
+    if isinstance(msg, dict) and "signature" in msg and "payload" in msg:
+        # The rover's CANONICAL telemetry envelope (friday_telemetry protocol.py):
+        # full envelope signed by the rover key, kind taken from the topic. The
+        # compact {kind, data, sig} branch below stays for the bench fake_rover.
+        pub = _rover_keys.get(rover)
+        if not (pub and env.verify(msg, pub)):
+            print(f"DROP unverifiable telemetry from {rover} on {topic}")
+            return None
+        if msg.get("expires_at", float("inf")) < time.time():
+            print(f"DROP expired telemetry from {rover} on {topic}")
+            return None
+        kind = parts[3] if len(parts) > 3 and parts[2] == "tlm" else "telemetry"
+        return {"kind": kind, "rover": rover, "topic": topic,
+                "data": msg.get("payload"), "verified": True}
     if isinstance(msg, dict) and "sig" in msg and "kind" in msg:
         pub = _rover_keys.get(rover)
         if not (pub and env.verify_telemetry(msg, pub)):
