@@ -271,7 +271,11 @@ export function TerrainView() {
       if (voxelMesh) { pivot.remove(voxelMesh); voxelMesh.geometry.dispose() }
       const count = v.coords.length / 3
       const g = new THREE.BoxGeometry(v.vs, v.vs, v.vs)
-      const mat = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: 0x0a1a24, emissiveIntensity: 0.4 })
+      // NOTE: no vertexColors here — the box geometry has no per-vertex color
+      // attribute, and vertexColors:true made the shader multiply every voxel
+      // by an unbound (black) attribute: the whole 3D layer rendered invisible.
+      // InstancedMesh.setColorAt() colours are applied automatically.
+      const mat = new THREE.MeshLambertMaterial({ emissive: 0x0a1a24, emissiveIntensity: 0.4 })
       voxelMesh = new THREE.InstancedMesh(g, mat, count)
       const tmp = new THREE.Object3D()
       let zmax = 0.1
