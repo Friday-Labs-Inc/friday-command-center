@@ -50,21 +50,31 @@ async function inflateMap(sample: TelemetrySample): Promise<MapMeta | null> {
 
 interface VoxelData {
   vs: number; ox: number; oy: number; oz: number
-  coords: Int16Array          // flat [di,dj,dk, di,dj,dk, ...]
+  coords: Int16Array          // flat [di,dj,dk, ...]
+  cols: Uint8Array | null     // RGB332 per voxel (0 = unknown -> height tint)
   n: number; stamp: number
 }
 
 async function inflateVoxels(sample: TelemetrySample): Promise<VoxelData | null> {
   const d = sample.data as Record<string, unknown> | null
-  if (!d || d['enc'] !== 'i16-zlib-b64' || typeof d['data'] !== 'string') return null
+  const enc = d?.['enc']
+  if (!d || (enc !== 'i16rgb332-zlib-b64' && enc !== 'i16-zlib-b64') || typeof d['data'] !== 'string') return null
   const bin = Uint8Array.from(atob(d['data'] as string), c => c.charCodeAt(0))
   const stream = new Blob([bin]).stream().pipeThrough(new DecompressionStream('deflate'))
   const raw = new Uint8Array(await new Response(stream).arrayBuffer())
+  const n = Number(d['n'])
+  const coords = new Int16Array(raw.buffer.slice(raw.byteOffset, raw.byteOffset + n * 6))
+  const cols = enc === 'i16rgb332-zlib-b64'
+    ? new Uint8Array(raw.buffer.slice(raw.byteOffset + n * 6, raw.byteOffset + n * 7))
+    : null
   return {
     vs: Number(d['vs']), ox: Number(d['ox']), oy: Number(d['oy']), oz: Number(d['oz']),
-    coords: new Int16Array(raw.buffer, raw.byteOffset, Math.floor(raw.byteLength / 2)),
-    n: Number(d['n']), stamp: Number(d['stamp']),
+    coords, cols, n, stamp: Number(d['stamp']),
   }
+}
+
+function rgb332Color(c: number): THREE.Color {
+  return new THREE.Color(((c >> 5) & 7) / 7, ((c >> 2) & 7) / 7, (c & 3) / 3)
 }
 
 // height -> colour: explored-floor teal low, warm high (reads as real relief)
@@ -273,7 +283,8 @@ export function TerrainView() {
         tmp.position.set(wx, wz + v.vs / 2, -wy)     // map(x,y,z-up) -> three(x,y-up,-z)
         tmp.updateMatrix()
         voxelMesh.setMatrixAt(k, tmp.matrix)
-        voxelMesh.setColorAt(k, heightColor(wz / zmax))
+        const cb = v.cols ? v.cols[k] : 0
+        voxelMesh.setColorAt(k, cb ? rgb332Color(cb) : heightColor(wz / zmax))
       }
       voxelMesh.instanceMatrix.needsUpdate = true
       if (voxelMesh.instanceColor) voxelMesh.instanceColor.needsUpdate = true
