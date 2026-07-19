@@ -48,6 +48,31 @@ async function inflateMap(sample: TelemetrySample): Promise<MapMeta | null> {
   }
 }
 
+interface VoxelData {
+  vs: number; ox: number; oy: number; oz: number
+  coords: Int16Array          // flat [di,dj,dk, di,dj,dk, ...]
+  n: number; stamp: number
+}
+
+async function inflateVoxels(sample: TelemetrySample): Promise<VoxelData | null> {
+  const d = sample.data as Record<string, unknown> | null
+  if (!d || d['enc'] !== 'i16-zlib-b64' || typeof d['data'] !== 'string') return null
+  const bin = Uint8Array.from(atob(d['data'] as string), c => c.charCodeAt(0))
+  const stream = new Blob([bin]).stream().pipeThrough(new DecompressionStream('deflate'))
+  const raw = new Uint8Array(await new Response(stream).arrayBuffer())
+  return {
+    vs: Number(d['vs']), ox: Number(d['ox']), oy: Number(d['oy']), oz: Number(d['oz']),
+    coords: new Int16Array(raw.buffer, raw.byteOffset, Math.floor(raw.byteLength / 2)),
+    n: Number(d['n']), stamp: Number(d['stamp']),
+  }
+}
+
+// height -> colour: explored-floor teal low, warm high (reads as real relief)
+function heightColor(t: number): THREE.Color {
+  const lo = new THREE.Color(0x2a8fb0), hi = new THREE.Color(0xffd27f)
+  return lo.clone().lerp(hi, Math.max(0, Math.min(1, t)))
+}
+
 type Link = 'live' | 'stale' | 'none' | 'unreachable'
 const linkOf = (s: TelemetrySample | undefined, staleS: number, err: boolean): Link =>
   err ? 'unreachable' : !s ? 'none' : (s.age_s ?? 0) > staleS ? 'stale' : 'live'
@@ -69,6 +94,8 @@ export function TerrainView() {
   const [mapS, setMapS] = useState<TelemetrySample | undefined>(undefined)
   const [odomS, setOdomS] = useState<TelemetrySample | undefined>(undefined)
   const [meta, setMeta] = useState<MapMeta | null>(null)
+  const [voxN, setVoxN] = useState(0)
+  const [voxS, setVoxS] = useState<TelemetrySample | undefined>(undefined)
   const [error, setError] = useState(false)
   const [updates, setUpdates] = useState(0)
 
@@ -77,6 +104,8 @@ export function TerrainView() {
   const odomRef = useRef<{ x: number; y: number; yaw: number } | null>(null)
   const builtStampRef = useRef(0)
   const knownRef = useRef(0)
+  const voxelRef = useRef<VoxelData | null>(null)
+  const voxStampRef = useRef(0)
 
   // ── data loop ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -108,12 +137,24 @@ export function TerrainView() {
             knownRef.current = pct
           }
         }
+        const vx = latest.kinds['voxel']
+        setVoxS(vx)
+        const vstamp = Number((vx?.data as Record<string, unknown> | undefined)?.['stamp'] ?? 0)
+        if (vx && vstamp !== voxStampRef.current) {
+          const vd = await inflateVoxels(vx)
+          if (alive && vd) {
+            voxStampRef.current = vstamp
+            voxelRef.current = vd
+            setVoxN(vd.n)
+          }
+        }
       } catch {
         if (alive) setError(true)
       }
     }
     metaRef.current = null; setMeta(null); builtStampRef.current = 0; knownRef.current = 0
     odomRef.current = null; setUpdates(0)
+    voxelRef.current = null; voxStampRef.current = 0; setVoxN(0)
     load()
     const iv = setInterval(load, POLL_MS)
     // the gateway broadcasts every verified telemetry event — ride it for
@@ -133,6 +174,13 @@ export function TerrainView() {
             metaRef.current = inflated
             setMeta(inflated)
             setUpdates(u => u + 1)
+          }
+        } else if (m.kind === 'voxel' && m.data) {
+          const vd = await inflateVoxels({ ts: 0, verified: true, data: m.data })
+          if (alive && vd && vd.stamp !== voxStampRef.current) {
+            voxStampRef.current = vd.stamp
+            voxelRef.current = vd
+            setVoxN(vd.n)
           }
         }
       } catch { /* malformed frame: the poll loop still covers us */ }
@@ -192,9 +240,38 @@ export function TerrainView() {
     pivot.add(roverGrp)
 
     let wallsMesh: THREE.InstancedMesh | null = null
+    let voxelMesh: THREE.InstancedMesh | null = null
     let floor: THREE.Mesh | null = null
     let grid: THREE.GridHelper | null = null
     let builtStamp = 0
+    let voxBuilt = 0
+
+    // the TRUE 3D reconstruction: one box per occupied voxel, coloured by
+    // height. When present these replace the flat extruded walls (real relief
+    // vs a floor-plan stood on edge).
+    function rebuildVoxels(v: VoxelData) {
+      if (voxelMesh) { pivot.remove(voxelMesh); voxelMesh.geometry.dispose() }
+      const count = v.coords.length / 3
+      const g = new THREE.BoxGeometry(v.vs, v.vs, v.vs)
+      const mat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.9 })
+      voxelMesh = new THREE.InstancedMesh(g, mat, count)
+      const tmp = new THREE.Object3D()
+      let zmax = 0.1
+      for (let k = 0; k < count; k++) zmax = Math.max(zmax, v.oz + v.coords[k * 3 + 2] * v.vs)
+      for (let k = 0; k < count; k++) {
+        const wx = v.ox + v.coords[k * 3] * v.vs
+        const wy = v.oy + v.coords[k * 3 + 1] * v.vs
+        const wz = v.oz + v.coords[k * 3 + 2] * v.vs
+        tmp.position.set(wx, wz + v.vs / 2, -wy)     // map(x,y,z-up) -> three(x,y-up,-z)
+        tmp.updateMatrix()
+        voxelMesh.setMatrixAt(k, tmp.matrix)
+        voxelMesh.setColorAt(k, heightColor(wz / zmax))
+      }
+      voxelMesh.instanceMatrix.needsUpdate = true
+      if (voxelMesh.instanceColor) voxelMesh.instanceColor.needsUpdate = true
+      pivot.add(voxelMesh)
+      if (wallsMesh) wallsMesh.visible = false     // voxels supersede the flat walls
+    }
 
     function rebuild(m: MapMeta) {
       if (wallsMesh) { pivot.remove(wallsMesh); wallsMesh.geometry.dispose() }
@@ -241,6 +318,8 @@ export function TerrainView() {
       const t = clock.getElapsedTime()
       const m = metaRef.current
       if (m && m.stamp !== builtStamp) { rebuild(m); builtStamp = m.stamp }
+      const v = voxelRef.current
+      if (v && v.stamp !== voxBuilt) { rebuildVoxels(v); voxBuilt = v.stamp }
       const od = odomRef.current
       if (od) {
         roverGrp.position.x += (od.x - roverGrp.position.x) * 0.12
@@ -286,7 +365,7 @@ export function TerrainView() {
     <div style={{ position: 'absolute', inset: 0 }}>
       <div ref={hostRef} style={{ position: 'absolute', inset: 0 }} />
       <ViewHead
-        eyebrow="SPATIAL AWARENESS · SLAM OVER THE RADIO"
+        eyebrow="SPATIAL AWARENESS · 3D RECONSTRUCTION OVER THE RADIO"
         title="Terrain"
         sub={<>
           {ROVERS.map((r, i) => (
@@ -309,6 +388,7 @@ export function TerrainView() {
               <div>known <b>{knownPct}%</b> · wall cells <b>{meta.walls}</b></div>
               <div>map age <b>{mapS?.age_s != null ? `${Math.round(mapS.age_s)}s` : '—'}</b> · updates <b>{updates}</b></div>
               <div>rover odom {chip(CHIP[odomLink])}</div>
+              <div>3D voxels <b>{voxN.toLocaleString()}</b> {voxS?.verified ? <span className="dk-chip ok">SIGNED</span> : null}</div>
             </div>
           ) : (
             <div style={{ fontSize: 12, opacity: 0.65, lineHeight: 1.6 }}>
