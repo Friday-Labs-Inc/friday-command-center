@@ -267,6 +267,9 @@ export function TerrainView() {
     // the TRUE 3D reconstruction: one box per occupied voxel, coloured by
     // height. When present these replace the flat extruded walls (real relief
     // vs a floor-plan stood on edge).
+    // outdoor worlds can run voxels-first (SLAM map empty/late): frame the
+    // camera from the voxel bounds so the view never collapses to the origin
+    const voxFrame = { ext: 0, cx: 0, cy: 0 }
     function rebuildVoxels(v: VoxelData) {
       if (voxelMesh) { pivot.remove(voxelMesh); voxelMesh.geometry.dispose() }
       const count = v.coords.length / 3
@@ -279,7 +282,19 @@ export function TerrainView() {
       voxelMesh = new THREE.InstancedMesh(g, mat, count)
       const tmp = new THREE.Object3D()
       let zmax = 0.1
-      for (let k = 0; k < count; k++) zmax = Math.max(zmax, v.oz + v.coords[k * 3 + 2] * v.vs)
+      let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity
+      for (let k = 0; k < count; k++) {
+        zmax = Math.max(zmax, v.oz + v.coords[k * 3 + 2] * v.vs)
+        const wx = v.ox + v.coords[k * 3] * v.vs
+        const wy = v.oy + v.coords[k * 3 + 1] * v.vs
+        if (wx < xmin) xmin = wx; if (wx > xmax) xmax = wx
+        if (wy < ymin) ymin = wy; if (wy > ymax) ymax = wy
+      }
+      if (count > 0) {
+        voxFrame.ext = Math.max(xmax - xmin, ymax - ymin)
+        voxFrame.cx = (xmin + xmax) / 2
+        voxFrame.cy = (ymin + ymax) / 2
+      }
       for (let k = 0; k < count; k++) {
         const wx = v.ox + v.coords[k * 3] * v.vs
         const wy = v.oy + v.coords[k * 3 + 1] * v.vs
@@ -294,6 +309,8 @@ export function TerrainView() {
       if (voxelMesh.instanceColor) voxelMesh.instanceColor.needsUpdate = true
       pivot.add(voxelMesh)
       if (wallsMesh) wallsMesh.visible = false     // voxels supersede the flat walls
+      const mm = metaRef.current
+      if (!mm || mm.w * mm.h === 0) pivot.position.set(-voxFrame.cx, 0, voxFrame.cy)
     }
 
     function rebuild(m: MapMeta) {
@@ -349,7 +366,8 @@ export function TerrainView() {
         roverGrp.position.z += (-od.y - roverGrp.position.z) * 0.12
         roverGrp.rotation.y = od.yaw
       }
-      const ext = m ? Math.max(m.w, m.h) * m.res : 8
+      const mapExt = m && m.w * m.h > 0 ? Math.max(m.w, m.h) * m.res : 0
+      const ext = Math.min(300, Math.max(8, mapExt, voxFrame.ext))
       const r = ext * 0.85
       camera.position.set(Math.sin(t * 0.07) * r, ext * 0.55, Math.cos(t * 0.07) * r)
       camera.lookAt(0, 0, 0)
@@ -382,7 +400,8 @@ export function TerrainView() {
     mapLink === 'stale' && odomLink === 'live' ? ['dk-chip ok', 'SETTLED'] : CHIP[mapLink]
   const chip = ([cls, label]: [string, string]) => <span className={cls}>{label}</span>
   const sig = mapS?.verified ? <span className="dk-chip ok">SIGNED</span> : null
-  const knownPct = meta ? Math.round((100 * meta.known) / (meta.w * meta.h)) : 0
+  const knownPct = meta && meta.w * meta.h > 0
+    ? Math.round((100 * meta.known) / (meta.w * meta.h)) : 0
 
   return (
     <div style={{ position: 'absolute', inset: 0 }}>
