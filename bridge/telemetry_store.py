@@ -27,9 +27,12 @@ def _safe_name(part: str) -> str:
 
 
 class TelemetryStore:
-    def __init__(self, state_dir: str, ring_size: int = RING_SIZE):
+    def __init__(self, state_dir: str, ring_size: int = RING_SIZE,
+                 ring_overrides: dict | None = None):
         self._dir = state_dir
         self._ring_size = ring_size
+        # per-kind ring sizes: bulky kinds (a whole map) keep less history
+        self._ring_overrides = dict(ring_overrides or {})
         self._rings: dict[tuple[str, str], deque] = {}
         self._lock = threading.Lock()
         os.makedirs(state_dir, exist_ok=True)
@@ -42,12 +45,13 @@ class TelemetryStore:
         key = (rover, kind)
         ring = self._rings.get(key)
         if ring is None:
-            ring = deque(maxlen=self._ring_size)
+            size = self._ring_overrides.get(kind, self._ring_size)
+            ring = deque(maxlen=size)
             path = self._path(rover, kind)
             if os.path.exists(path):
                 try:
                     with open(path, encoding="utf-8") as f:
-                        lines = f.readlines()[-self._ring_size:]
+                        lines = f.readlines()[-size:]
                     for line in lines:
                         try:
                             ring.append(json.loads(line))

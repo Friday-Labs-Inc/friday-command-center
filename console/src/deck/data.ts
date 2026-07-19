@@ -153,3 +153,9 @@ export function useDeckDataSource(): DeckData {
 
   return { modules, error, latencyMs, events, pushEvent }
 }
+
+// field rover + the Gazebo sim — distinct identities, distinct signing keys
+export const ROVERS = [
+  { id: 'MARK1-001',     label: 'FIELD', sim: false },
+  { id: 'MARK1-SIM-001', label: 'SIM',   sim: true },
+] as const

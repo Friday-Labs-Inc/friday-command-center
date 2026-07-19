@@ -1,347 +1,279 @@
+// TerrainView — the Command Center's REAL spatial awareness.
+//
+// The rover's SLAM occupancy grid crosses the radio as signed tlm/map
+// snapshots (zlib+base64 over raw cells); this view inflates them in the
+// browser and raises the known world in three.js: walls as extruded cells,
+// free space as floor, unknown as darkness. The rover rides its own signed
+// odometry. No fabricated feed remains — when there is no map telemetry the
+// view says so instead of inventing terrain.
+
 import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
-import { useDeck } from '../data'
-import { Panel, ViewHead, SimBadge, Legend } from '../bits'
+import { ROVERS, useDeck } from '../data'
+import { Panel, ViewHead, Legend } from '../bits'
+import { telemetryLatest } from '../../lib/api'
+import type { TelemetrySample } from '../../lib/api'
 
-function terrainH(x: number, z: number): number {
-  // ~2x vertical exaggeration so ridges + the gully read as real relief at the
-  // deck's 3/4 camera angle. Everything on the surface (rover, detections) reads
-  // this same function, so they stay planted.
-  return 2.05 * (
-    Math.sin(x * 0.28) * 0.45 +
-    Math.cos(z * 0.22) * 0.32 +
-    Math.sin(x * 0.71 + z * 0.48) * 0.16 +
-    Math.cos(x * 0.15 - z * 0.3) * 0.2 +
-    Math.sin(x * 1.6 + z * 1.1) * 0.07 -
-    0.95 * Math.exp(-((x - 0.8) ** 2 + (z + 0.4) ** 2) / 2.5)
-  )
+const POLL_MS = 5000
+const MAP_STALE_S = 60         // map only re-sends on change; be generous
+const ODOM_STALE_S = 15
+const WALL_MIN = 65            // occupancy >= this renders as wall
+const WALL_H = 0.35            // extruded wall height, metres
+
+interface MapMeta {
+  w: number; h: number; res: number
+  ox: number; oy: number
+  stamp: number
+  known: number; walls: number
+  cells: Uint8Array
+}
+
+async function inflateMap(sample: TelemetrySample): Promise<MapMeta | null> {
+  const d = sample.data as Record<string, unknown> | null
+  if (!d || d['enc'] !== 'zlib-b64' || typeof d['data'] !== 'string') return null
+  const bin = Uint8Array.from(atob(d['data'] as string), c => c.charCodeAt(0))
+  const ds = new DecompressionStream('deflate')       // zlib-wrapped deflate
+  const stream = new Blob([bin]).stream().pipeThrough(ds)
+  const cells = new Uint8Array(await new Response(stream).arrayBuffer())
+  let known = 0, walls = 0
+  for (let i = 0; i < cells.length; i++) {
+    if (cells[i] !== 0xFF) known++
+    if (cells[i] >= WALL_MIN && cells[i] <= 100) walls++
+  }
+  return {
+    w: Number(d['w']), h: Number(d['h']), res: Number(d['res']),
+    ox: Number(d['ox']), oy: Number(d['oy']),
+    stamp: Number(d['stamp']), known, walls, cells,
+  }
+}
+
+type Link = 'live' | 'stale' | 'none' | 'unreachable'
+const linkOf = (s: TelemetrySample | undefined, staleS: number, err: boolean): Link =>
+  err ? 'unreachable' : !s ? 'none' : (s.age_s ?? 0) > staleS ? 'stale' : 'live'
+
+const CHIP: Record<Link, [string, string]> = {
+  live:        ['dk-chip ok',      'LIVE'],
+  stale:       ['dk-chip standby', 'STALE'],
+  none:        ['dk-chip prov',    'NO FEED'],
+  unreachable: ['dk-chip crit',    'GATEWAY UNREACHABLE'],
 }
 
 export function TerrainView() {
-  const mountRef = useRef<HTMLDivElement>(null)
   const { pushEvent } = useDeck()
   const pushRef = useRef(pushEvent)
   useEffect(() => { pushRef.current = pushEvent }, [pushEvent])
 
-  const roverLbl = useRef<HTMLDivElement>(null)
-  const det1Lbl  = useRef<HTMLDivElement>(null)
-  const det2Lbl  = useRef<HTMLDivElement>(null)
-  const det3Lbl  = useRef<HTMLDivElement>(null)
+  const [roverIdx, setRoverIdx] = useState(1)          // SIM is the mapper today
+  const rover = ROVERS[roverIdx]
+  const [mapS, setMapS] = useState<TelemetrySample | undefined>(undefined)
+  const [odomS, setOdomS] = useState<TelemetrySample | undefined>(undefined)
+  const [meta, setMeta] = useState<MapMeta | null>(null)
+  const [error, setError] = useState(false)
+  const [updates, setUpdates] = useState(0)
 
-  const [seg, setSeg] = useState(0)
-  const [pts, setPts] = useState(0)
-  const [cov, setCov] = useState(0)
-  const gated = useRef(false)
+  const hostRef = useRef<HTMLDivElement | null>(null)
+  const metaRef = useRef<MapMeta | null>(null)
+  const odomRef = useRef<{ x: number; y: number; yaw: number } | null>(null)
+  const builtStampRef = useRef(0)
+  const knownRef = useRef(0)
 
+  // ── data loop ──────────────────────────────────────────────────────────────
   useEffect(() => {
-    const iv = setInterval(() => {
-      setSeg(s => Math.min(s + Math.floor(Math.random() * 14 + 8), 1284))
-      setPts(p => Math.min(p + Math.floor(Math.random() * 7200 + 3800), 8_300_000))
-      setCov(c => Math.min(c + Math.random() * 0.9 + 0.3, 87))
-    }, 280)
-    return () => clearInterval(iv)
-  }, [])
-
-  // Gate-crossing event fires from an effect (never from inside a setState
-  // updater — that runs during render and would setState another component).
-  useEffect(() => {
-    if (cov >= 50 && !gated.current) {
-      gated.current = true
-      pushRef.current('research', 'MapSegment stream · gate passed', 'ai')
+    let alive = true
+    const load = async () => {
+      try {
+        const latest = await telemetryLatest(rover.id)
+        if (!alive) return
+        setError(false)
+        setMapS(latest.kinds['map'])
+        setOdomS(latest.kinds['odom'])
+        const od = latest.kinds['odom']?.data as Record<string, unknown> | undefined
+        if (od && typeof od['x'] === 'number') {
+          const qz = Number(od['qz'] ?? 0), qw = Number(od['qw'] ?? 1)
+          odomRef.current = { x: Number(od['x']), y: Number(od['y']), yaw: 2 * Math.atan2(qz, qw) }
+        }
+        const m = latest.kinds['map']
+        const stamp = Number((m?.data as Record<string, unknown> | undefined)?.['stamp'] ?? 0)
+        if (m && stamp !== builtStampRef.current) {
+          const inflated = await inflateMap(m)
+          if (!alive || !inflated) return
+          builtStampRef.current = stamp
+          metaRef.current = inflated
+          setMeta(inflated)
+          setUpdates(u => u + 1)
+          const pct = Math.round((100 * inflated.known) / (inflated.w * inflated.h))
+          if (pct > knownRef.current) {
+            pushRef.current('MAP', `world grew: ${pct}% known (${inflated.w}×${inflated.h} @ ${(inflated.res * 100).toFixed(0)} cm)`, 'ok')
+            knownRef.current = pct
+          }
+        }
+      } catch {
+        if (alive) setError(true)
+      }
     }
-  }, [cov])
+    metaRef.current = null; setMeta(null); builtStampRef.current = 0; knownRef.current = 0
+    odomRef.current = null; setUpdates(0)
+    load()
+    const iv = setInterval(load, POLL_MS)
+    return () => { alive = false; clearInterval(iv) }
+  }, [rover.id])
 
+  // ── scene ──────────────────────────────────────────────────────────────────
   useEffect(() => {
-    // `!` keeps the non-null type inside the hoisted prj() closure below
-    const mount = mountRef.current!
-    if (!mount) return
-
-    const W = mount.clientWidth || 800
-    const H = mount.clientHeight || 600
-
+    const host = hostRef.current
+    if (!host) return
+    const W = host.clientWidth || 800, H = host.clientHeight || 520
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
-    renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     renderer.setSize(W, H)
-    renderer.setClearColor(0x000000, 0)
-    mount.appendChild(renderer.domElement)
+    host.appendChild(renderer.domElement)
 
     const scene = new THREE.Scene()
     const pivot = new THREE.Group()
     scene.add(pivot)
-
     const camera = new THREE.PerspectiveCamera(52, W / H, 0.01, 500)
-    camera.position.set(0, 7.5, 13)
-    camera.lookAt(0, 0, 0)
 
-    // ── Terrain ──────────────────────────────────────────────────────────────
-    const SX = 96, SZ = 56, FW = 18, FD = 10.5
-    const geo = new THREE.PlaneGeometry(FW, FD, SX, SZ)
-    geo.rotateX(-Math.PI / 2)
-    const pos = geo.attributes.position as THREE.BufferAttribute
-    const VC = pos.count
-    const hs = new Float32Array(VC)
-    let hMin = Infinity, hMax = -Infinity
-    for (let i = 0; i < VC; i++) {
-      const h = terrainH(pos.getX(i) / FW * 5, pos.getZ(i) / FD * 5)
-      hs[i] = h
-      if (h < hMin) hMin = h
-      if (h > hMax) hMax = h
-    }
-    for (let i = 0; i < VC; i++) pos.setY(i, hs[i])
-    pos.needsUpdate = true
-    geo.computeVertexNormals()
+    // rover marker: body dot + heading cone
+    const rBody = new THREE.Mesh(
+      new THREE.SphereGeometry(0.14, 12, 8),
+      new THREE.MeshBasicMaterial({ color: 0x3be896 }))
+    const rNose = new THREE.Mesh(
+      new THREE.ConeGeometry(0.09, 0.3, 8),
+      new THREE.MeshBasicMaterial({ color: 0x3be896 }))
+    rNose.rotation.z = -Math.PI / 2
+    rNose.position.x = 0.26
+    const roverGrp = new THREE.Group()
+    roverGrp.add(rBody); roverGrp.add(rNose)
+    roverGrp.position.y = 0.12
+    pivot.add(roverGrp)
 
-    // Reveal times — distance from entry corner (-FW/2, -FD/2) + jitter
-    const maxD = Math.sqrt(FW * FW + FD * FD)
-    const revT = new Float32Array(VC)
-    for (let i = 0; i < VC; i++) {
-      const dx = pos.getX(i) + FW / 2
-      const dz = pos.getZ(i) + FD / 2
-      revT[i] = (Math.sqrt(dx * dx + dz * dz) / maxD) * 12 + (Math.random() - 0.5) * 0.9
-    }
+    let wallsMesh: THREE.InstancedMesh | null = null
+    let floor: THREE.Mesh | null = null
+    let grid: THREE.GridHelper | null = null
+    let builtStamp = 0
 
-    // Target colors by elevation — deep dark teal in the valleys → bright
-    // cyan/white on the ridges, for strong relief contrast on the wireframe.
-    const hRange = hMax - hMin
-    const tgt = new Float32Array(VC * 3)
-    for (let i = 0; i < VC; i++) {
-      const t = (hs[i] - hMin) / hRange
-      const e = t * t * (3 - 2 * t) // smoothstep for punchier midtones
-      tgt[i * 3]     = 0.03 + e * 0.52
-      tgt[i * 3 + 1] = 0.16 + e * 0.78
-      tgt[i * 3 + 2] = 0.26 + e * 0.66
-    }
-    const colBuf = new Float32Array(VC * 3)
-    const colAttr = new THREE.BufferAttribute(colBuf, 3)
-    geo.setAttribute('color', colAttr)
-
-    const mat = new THREE.MeshBasicMaterial({ wireframe: true, vertexColors: true })
-    pivot.add(new THREE.Mesh(geo, mat))
-
-    // ── Scanning cone ─────────────────────────────────────────────────────────
-    const FANS = 30, SANG = Math.PI / 2.6
-    const cV = new Float32Array((FANS + 2) * 3)
-    // cV[0..2] = center (stays 0,0,0); arc verts start at index 1
-    for (let i = 0; i <= FANS; i++) {
-      const a = -SANG / 2 + (i / FANS) * SANG
-      cV[(i + 1) * 3]     = Math.sin(a) * 3.8
-      cV[(i + 1) * 3 + 1] = 0.04
-      cV[(i + 1) * 3 + 2] = -Math.cos(a) * 3.8
-    }
-    const cIdx = new Uint16Array(FANS * 3)
-    for (let i = 0; i < FANS; i++) {
-      cIdx[i * 3] = 0; cIdx[i * 3 + 1] = i + 1; cIdx[i * 3 + 2] = i + 2
-    }
-    const coneG = new THREE.BufferGeometry()
-    coneG.setAttribute('position', new THREE.BufferAttribute(cV, 3))
-    coneG.setIndex(new THREE.BufferAttribute(cIdx, 1))
-    const coneMat = new THREE.MeshBasicMaterial({
-      color: 0x48e5f2, transparent: true, opacity: 0.13, side: THREE.DoubleSide,
-    })
-    const coneMesh = new THREE.Mesh(coneG, coneMat)
-    pivot.add(coneMesh)
-
-    // ── Rover sphere ──────────────────────────────────────────────────────────
-    const roverG = new THREE.SphereGeometry(0.19, 10, 7)
-    const roverM = new THREE.MeshBasicMaterial({ color: 0x3be896 })
-    const rover  = new THREE.Mesh(roverG, roverM)
-    pivot.add(rover)
-    const pathX0 = -FW / 2 + 1.4, pathX1 = FW / 2 - 1.4, pathZ = 1.2
-
-    // ── Detection markers ─────────────────────────────────────────────────────
-    type DM = { wp: THREE.Vector3; ref: { current: HTMLDivElement | null } }
-    const defs: DM[] = [
-      { wp: new THREE.Vector3(-3.1, 0,  0.7), ref: det1Lbl },
-      { wp: new THREE.Vector3( 2.2, 0, -1.4), ref: det2Lbl },
-      { wp: new THREE.Vector3( 5.4, 0,  2.0), ref: det3Lbl },
-    ]
-    defs.forEach(d => { d.wp.y = terrainH(d.wp.x / FW * 5, d.wp.z / FD * 5) + 0.25 })
-    const dGeo  = new THREE.OctahedronGeometry(0.23, 0)
-    const dMats = [
-      new THREE.MeshBasicMaterial({ color: 0xffb454 }),
-      new THREE.MeshBasicMaterial({ color: 0xff4d6a }),
-      new THREE.MeshBasicMaterial({ color: 0xffb454 }),
-    ]
-    const dMeshes = defs.map((d, i) => {
-      const m = new THREE.Mesh(dGeo, dMats[i])
-      m.position.copy(d.wp); m.scale.setScalar(0); pivot.add(m); return m
-    })
-    const dRevT = defs.map(d => {
-      const dx = d.wp.x + FW / 2, dz = d.wp.z + FD / 2
-      return (Math.sqrt(dx * dx + dz * dz) / maxD) * 12 + 1.2
-    })
-
-    // ── Mouse parallax ────────────────────────────────────────────────────────
-    let mx = 0, my = 0
-    const onPtr = (e: MouseEvent) => {
-      mx = (e.clientX / window.innerWidth  - 0.5) * 2
-      my = (e.clientY / window.innerHeight - 0.5) * 2
-    }
-    mount.addEventListener('pointermove', onPtr)
-    const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches
-
-    // ── Resize observer ───────────────────────────────────────────────────────
-    const ro = new ResizeObserver(() => {
-      const nW = mount.clientWidth, nH = mount.clientHeight
-      camera.aspect = nW / nH; camera.updateProjectionMatrix()
-      renderer.setSize(nW, nH)
-    })
-    ro.observe(mount)
-
-    // Project world→screen (returns coords in mount's client rect)
-    function prj(v: THREE.Vector3): { x: number; y: number; vis: boolean } {
-      const p = v.clone().project(camera)
-      return {
-        x:   (p.x + 1) / 2 * mount.clientWidth,
-        y:   (1 - (p.y + 1) / 2) * mount.clientHeight,
-        vis: p.z < 1,
+    function rebuild(m: MapMeta) {
+      if (wallsMesh) { pivot.remove(wallsMesh); wallsMesh.geometry.dispose() }
+      if (floor) { pivot.remove(floor); floor.geometry.dispose() }
+      if (grid) { pivot.remove(grid) }
+      const mw = m.w * m.res, mh = m.h * m.res
+      // free-space floor, centred on the map extent
+      floor = new THREE.Mesh(
+        new THREE.PlaneGeometry(mw, mh),
+        new THREE.MeshBasicMaterial({ color: 0x0a1a24, transparent: true, opacity: 0.85 }))
+      floor.rotation.x = -Math.PI / 2
+      floor.position.set(m.ox + mw / 2, -0.01, -(m.oy + mh / 2))
+      pivot.add(floor)
+      grid = new THREE.GridHelper(Math.max(mw, mh), Math.max(m.w, m.h) / 8, 0x123244, 0x0d2230)
+      grid.position.copy(floor.position)
+      grid.position.y = 0.0
+      pivot.add(grid)
+      // walls: one instanced box per occupied cell
+      const boxes: Array<[number, number]> = []
+      for (let j = 0; j < m.h; j++) {
+        for (let i = 0; i < m.w; i++) {
+          const v = m.cells[j * m.w + i]
+          if (v >= WALL_MIN && v <= 100) boxes.push([i, j])
+        }
       }
+      const g = new THREE.BoxGeometry(m.res, WALL_H, m.res)
+      const mat = new THREE.MeshBasicMaterial({ color: 0x48e5f2, transparent: true, opacity: 0.55 })
+      wallsMesh = new THREE.InstancedMesh(g, mat, boxes.length)
+      const tmp = new THREE.Object3D()
+      boxes.forEach(([i, j], k) => {
+        tmp.position.set(m.ox + (i + 0.5) * m.res, WALL_H / 2, -(m.oy + (j + 0.5) * m.res))
+        tmp.updateMatrix()
+        wallsMesh!.setMatrixAt(k, tmp.matrix)
+      })
+      wallsMesh.instanceMatrix.needsUpdate = true
+      pivot.add(wallsMesh)
+      // aim the orbit at the map centre
+      pivot.position.set(-floor.position.x, 0, -floor.position.z)
     }
 
-    // ── Animation loop ────────────────────────────────────────────────────────
     const clock = new THREE.Clock()
     let raf = 0
-
-    const loop = () => {
-      raf = requestAnimationFrame(loop)
+    const frame = () => {
       const t = clock.getElapsedTime()
-
-      if (!reduced) pivot.rotation.y = t * 0.04 + mx * 0.06
-      pivot.rotation.x = -0.05 + my * 0.025
-
-      // Terrain reveal — fade each vertex from dark to target color
-      for (let i = 0; i < VC; i++) {
-        const p = Math.max(0, Math.min(1, (t - revT[i]) / 0.55))
-        colBuf[i * 3]     = tgt[i * 3]     * p
-        colBuf[i * 3 + 1] = tgt[i * 3 + 1] * p
-        colBuf[i * 3 + 2] = tgt[i * 3 + 2] * p
+      const m = metaRef.current
+      if (m && m.stamp !== builtStamp) { rebuild(m); builtStamp = m.stamp }
+      const od = odomRef.current
+      if (od) {
+        roverGrp.position.x += (od.x - roverGrp.position.x) * 0.12
+        roverGrp.position.z += (-od.y - roverGrp.position.z) * 0.12
+        roverGrp.rotation.y = od.yaw
       }
-      colAttr.needsUpdate = true
-
-      // Rover crawl — back-and-forth survey line, 26 s half-period
-      const rc = (t % 52) / 52
-      const rx = rc < 0.5
-        ? pathX0 + (pathX1 - pathX0) * (rc * 2)
-        : pathX1 - (pathX1 - pathX0) * ((rc - 0.5) * 2)
-      rover.position.set(rx, terrainH(rx / FW * 5, pathZ / FD * 5) + 0.22, pathZ)
-
-      // Cone tracks rover and sweeps
-      coneMesh.position.copy(rover.position)
-      coneMesh.rotation.y = t * 0.7
-
-      // Detection markers pop in after their zone is revealed
-      dMeshes.forEach((m, i) => {
-        m.scale.setScalar(Math.max(0, Math.min(1, (t - dRevT[i]) / 0.4)))
-        m.rotation.y = t * 0.5
-      })
-
-      // Project HTML labels
-      const rw = pivot.localToWorld(rover.position.clone())
-      rw.y += 0.5
-      const rs = prj(rw)
-      if (roverLbl.current) {
-        roverLbl.current.style.transform =
-          `translate(calc(${rs.x}px - 50%), calc(${rs.y}px - 140%))`
-        roverLbl.current.style.opacity = rs.vis ? '1' : '0'
-      }
-
-      defs.forEach((d, i) => {
-        const lw = pivot.localToWorld(d.wp.clone())
-        lw.y += 0.55
-        const ls = prj(lw)
-        const el = d.ref.current
-        if (el) {
-          el.style.transform =
-            `translate(calc(${ls.x}px - 50%), calc(${ls.y}px - 130%))`
-          el.style.opacity = dMeshes[i].scale.x > 0.1 ? '1' : '0'
-        }
-      })
-
+      const ext = m ? Math.max(m.w, m.h) * m.res : 8
+      const r = ext * 0.85
+      camera.position.set(Math.sin(t * 0.07) * r, ext * 0.55, Math.cos(t * 0.07) * r)
+      camera.lookAt(0, 0, 0)
       renderer.render(scene, camera)
+      raf = requestAnimationFrame(frame)
     }
-    loop()
+    raf = requestAnimationFrame(frame)
 
+    const onResize = () => {
+      const w = host.clientWidth, h = host.clientHeight
+      if (!w || !h) return
+      renderer.setSize(w, h)
+      camera.aspect = w / h
+      camera.updateProjectionMatrix()
+    }
+    window.addEventListener('resize', onResize)
     return () => {
       cancelAnimationFrame(raf)
-      ro.disconnect()
-      mount.removeEventListener('pointermove', onPtr)
-      geo.dispose(); mat.dispose()
-      coneG.dispose(); coneMat.dispose()
-      roverG.dispose(); roverM.dispose()
-      dGeo.dispose(); dMats.forEach(m => m.dispose())
+      window.removeEventListener('resize', onResize)
       renderer.dispose()
-      if (mount.contains(renderer.domElement)) mount.removeChild(renderer.domElement)
+      host.removeChild(renderer.domElement)
     }
   }, [])
 
-  const lbl = (c: string): { [k: string]: string | number } => ({
-    position:       'absolute',
-    top:            0,
-    left:           0,
-    pointerEvents:  'none',
-    fontSize:       '9px',
-    fontFamily:     'var(--mono)',
-    color:          c,
-    letterSpacing:  '0.06em',
-    background:     'rgba(4,7,12,0.82)',
-    padding:        '1px 5px',
-    borderRadius:   '2px',
-    border:         `1px solid ${c}55`,
-    whiteSpace:     'nowrap',
-    transition:     'opacity 0.3s',
-    opacity:        '0',
-  })
+  const mapLink = linkOf(mapS, MAP_STALE_S, error)
+  const odomLink = linkOf(odomS, ODOM_STALE_S, error)
+  const chip = ([cls, label]: [string, string]) => <span className={cls}>{label}</span>
+  const sig = mapS?.verified ? <span className="dk-chip ok">SIGNED</span> : null
+  const knownPct = meta ? Math.round((100 * meta.known) / (meta.w * meta.h)) : 0
 
   return (
-    <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', background: 'var(--void)' }}>
-      <div ref={mountRef} style={{ position: 'absolute', inset: 0 }} />
-
+    <div style={{ position: 'absolute', inset: 0 }}>
+      <div ref={hostRef} style={{ position: 'absolute', inset: 0 }} />
       <ViewHead
-        eyebrow="ENVIRONMENT RECONSTRUCTION · RESEARCH DECK"
-        title="Terrain · Live"
-        sub={<>SLAM MapSegments streaming over the data gate — raw sensor data never leaves the rover</>}
+        eyebrow="SPATIAL AWARENESS · SLAM OVER THE RADIO"
+        title="Terrain"
+        sub={<>
+          {ROVERS.map((r, i) => (
+            <button key={r.id} onClick={() => setRoverIdx(i)}
+              className={i === roverIdx ? 'dk-chip ok' : 'dk-chip prov'}
+              style={{ cursor: 'pointer', marginRight: 6, background: 'transparent' }}>
+              {r.label}
+            </button>
+          ))}
+          {rover.sim
+            ? <span className="dk-chip standby">GAZEBO SIM — real SLAM, virtual world</span>
+            : <span className="dk-chip prov">FIELD — SLAM not deployed on hardware yet</span>}
+        </>}
       />
-
-      <div style={{ position: 'absolute', top: 16, right: 16, width: 224 }}>
-        <Panel title="Segment Stream" meta={<>10.0.1.3 → core</>}>
-          <div className="dk-kv">
-            <span className="k">segments</span>
-            <span className="v">{seg.toLocaleString()}</span>
-          </div>
-          <div className="dk-kv">
-            <span className="k">points</span>
-            <span className="v">{(pts / 1e6).toFixed(2)} M</span>
-          </div>
-          <div className="dk-kv">
-            <span className="k">coverage</span>
-            <span className="v">{cov.toFixed(1)} %</span>
-          </div>
-          <div className="dk-kv">
-            <span className="k">slam drift</span>
-            <span className="v">0.03 m</span>
-          </div>
-          <div className="dk-kv">
-            <span className="k">detections</span>
-            <span className="v" style={{ color: 'var(--amber)' }}>3 tagged · amber</span>
-          </div>
-          <div style={{ marginTop: 8 }}>
-            <SimBadge label="SIMULATED FEED · RESEARCH DECK PENDING" />
-          </div>
+      <div style={{ position: 'absolute', top: 16, right: 20, width: 250, zIndex: 5 }}>
+        <Panel title="World model" meta={<>{chip(CHIP[mapLink])} {sig}</>}>
+          {meta ? (
+            <div className="dk-kv" style={{ fontSize: 12, lineHeight: 1.9 }}>
+              <div>map <b>{(meta.w * meta.res).toFixed(1)} × {(meta.h * meta.res).toFixed(1)} m</b> @ {(meta.res * 100).toFixed(0)} cm</div>
+              <div>known <b>{knownPct}%</b> · wall cells <b>{meta.walls}</b></div>
+              <div>map age <b>{mapS?.age_s != null ? `${Math.round(mapS.age_s)}s` : '—'}</b> · updates <b>{updates}</b></div>
+              <div>rover odom {chip(CHIP[odomLink])}</div>
+            </div>
+          ) : (
+            <div style={{ fontSize: 12, opacity: 0.65, lineHeight: 1.6 }}>
+              {mapLink === 'unreachable' ? 'telemetry gateway unreachable'
+                : rover.sim ? 'no map telemetry yet — sim starting or SLAM warming up'
+                : 'no map telemetry — SLAM does not run on the field rover yet'}
+            </div>
+          )}
         </Panel>
       </div>
-
-      <Legend items={[
-        ['#48e5f2', 'RECONSTRUCTED MESH'],
-        ['#3be896', 'ROVER · WP-17'],
-        ['#ffb454', 'DETECTION'],
-        ['#5a7396', 'UNMAPPED'],
-      ]} />
-
-      {/* Projected HTML labels — positions set each frame by rAF */}
-      <div ref={roverLbl} style={lbl('#3be896') as React.CSSProperties}>MARK1-001</div>
-      <div ref={det1Lbl}  style={lbl('#ffb454') as React.CSSProperties}>MOISTURE ANOMALY</div>
-      <div ref={det2Lbl}  style={lbl('#ff4d6a') as React.CSSProperties}>ROW OBSTRUCTION</div>
-      <div ref={det3Lbl}  style={lbl('#ffb454') as React.CSSProperties}>ROCK DEPOSIT</div>
+      <div style={{ position: 'absolute', bottom: 14, left: 20, zIndex: 5 }}>
+        <Legend items={[['#48e5f2', 'wall (occupied cell)'], ['#3be896', 'rover · signed odom'], ['#0a1a24', 'explored floor'], ['#000000', 'unknown']]} />
+      </div>
     </div>
   )
 }
