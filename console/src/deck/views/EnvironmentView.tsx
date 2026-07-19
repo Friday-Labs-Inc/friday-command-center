@@ -15,8 +15,11 @@ import { Panel, ViewHead } from '../bits'
 import { telemetryLatest, telemetryHistory } from '../../lib/api'
 import type { TelemetrySample } from '../../lib/api'
 
-// single-rover fleet today; the deck's other views assume the same
-const ROVER = 'MARK1-001'
+// field rover + the Gazebo sim — distinct identities, distinct signing keys
+const ROVERS = [
+  { id: 'MARK1-001',     label: 'FIELD', sim: false },
+  { id: 'MARK1-SIM-001', label: 'SIM',   sim: true },
+] as const
 const POLL_MS = 5000
 const STALE_S = 30
 
@@ -101,9 +104,12 @@ function tiltColor(v: unknown) {
 
 export function EnvironmentView() {
   const { pushEvent } = useDeck()
+  const [roverIdx, setRoverIdx] = useState(0)
+  const ROVER = ROVERS[roverIdx].id
   const [env, setEnv] = useState<TelemetrySample | undefined>(undefined)
   const [gps, setGps] = useState<TelemetrySample | undefined>(undefined)
   const [imu, setImu] = useState<TelemetrySample | undefined>(undefined)
+  const [odom, setOdom] = useState<TelemetrySample | undefined>(undefined)
   const [error, setError] = useState(false)
   const canvasRefs = useRef<(HTMLCanvasElement | null)[]>([])
   const histRef = useRef<Map<string, number[]>>(new Map())
@@ -121,6 +127,7 @@ export function EnvironmentView() {
         setEnv(e)
         setGps(g)
         setImu(latest.kinds['imu'])
+        setOdom(latest.kinds['odom'])
 
         // stream events on real transitions only
         const link = linkOf(e, false)
@@ -152,10 +159,12 @@ export function EnvironmentView() {
         }
       }
     }
+    histRef.current.clear()
+    linkRef.current = { env: null, presence: null }
     load()
     const iv = setInterval(load, POLL_MS)
     return () => { alive = false; clearInterval(iv) }
-  }, [pushEvent])
+  }, [pushEvent, ROVER])
 
   useEffect(() => {
     let raf = 0
@@ -173,9 +182,16 @@ export function EnvironmentView() {
   const envLink = linkOf(env, error)
   const gpsLink = linkOf(gps, error)
   const imuLink = linkOf(imu, error)
+  const odomLink = linkOf(odom, error)
   const envData = (env?.data ?? {}) as Record<string, unknown>
   const gpsData = (gps?.data ?? {}) as Record<string, unknown>
   const imuData = (imu?.data ?? {}) as Record<string, unknown>
+  const odomData = (odom?.data ?? {}) as Record<string, unknown>
+  const yawDeg = (() => {
+    const qz = odomData['qz'], qw = odomData['qw']
+    if (typeof qz !== 'number' || typeof qw !== 'number') return undefined
+    return ((2 * Math.atan2(qz, qw)) * 180 / Math.PI + 360) % 360
+  })()
   const presence = envLink === 'ok' || envLink === 'stale' ? Boolean(envData['presence']) : null
 
   const chip = ([cls, label]: [string, string], age?: number) => (
@@ -191,7 +207,16 @@ export function EnvironmentView() {
       <ViewHead
         eyebrow="WORLD SENSES"
         title="Environment"
-        sub={<>env pod MARK1-ENVPOD-001 · phone pod MARK1-PHONE-001 · recorded at the gateway</>}
+        sub={<>
+          {ROVERS.map((r, i) => (
+            <button key={r.id} onClick={() => setRoverIdx(i)}
+              className={i === roverIdx ? 'dk-chip ok' : 'dk-chip prov'}
+              style={{ cursor: 'pointer', marginRight: 6, background: 'transparent' }}>
+              {r.label} · {r.id}
+            </button>
+          ))}
+          {ROVERS[roverIdx].sim && <span className="dk-chip standby">SIMULATION — Gazebo, not hardware</span>}
+        </>}
       />
 
       <div style={{ marginTop: 84, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 14 }}>
@@ -271,6 +296,22 @@ export function EnvironmentView() {
             <div style={{ padding: '10px 2px', fontSize: 12, opacity: 0.6 }}>
               {imuLink === 'unreachable' ? 'telemetry gateway unreachable'
                 : 'no attitude telemetry recorded — phone pod away or HyperIMU stopped'}
+            </div>
+          )}
+        </Panel>
+
+        <Panel title="ODOMETRY" meta={<>{chip(LINK_CHIP[odomLink], odom?.age_s)} {sigChip(odom)}</>}>
+          {odomLink === 'ok' || odomLink === 'stale' ? (
+            <div style={{ padding: '6px 2px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, fontSize: 13 }}>
+              <div>X <b>{fmtOrDash(odomData['x'], v => `${v.toFixed(2)} m`)}</b></div>
+              <div>Y <b>{fmtOrDash(odomData['y'], v => `${v.toFixed(2)} m`)}</b></div>
+              <div>YAW <b>{fmtOrDash(yawDeg, v => `${v.toFixed(0)}°`)}</b></div>
+              <div>SPEED <b>{fmtOrDash(odomData['vx'], v => `${Math.abs(v).toFixed(2)} m/s`)}</b></div>
+            </div>
+          ) : (
+            <div style={{ padding: '10px 2px', fontSize: 12, opacity: 0.6 }}>
+              {odomLink === 'unreachable' ? 'telemetry gateway unreachable'
+                : 'no odometry recorded — rover parked or link pending'}
             </div>
           )}
         </Panel>
