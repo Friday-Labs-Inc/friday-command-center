@@ -12,6 +12,7 @@ Run: CP_BASE=... CP_KEY=... CP_SECRET=... PYTHONPATH=. .venv/bin/uvicorn dispatc
 from __future__ import annotations
 
 import asyncio
+import datetime
 import json
 import os
 import time
@@ -52,6 +53,46 @@ _NONCE = EdgeNonce(_CP, path=os.path.join(STATE_DIR, "edge_nonce.json")) if _CP 
 
 _state = {"mqtt": None}
 
+# ── Self-signing mission dispatch (OP-DEMO-001) ──────────────────────────────
+# The FCC signs mission commands directly using a provisioned operator key so
+# dispatch works without a running client-side signing agent.
+_OP_MISSION_ID = "OP-DEMO-001"
+_OP_MISSION_KEY = None   # loaded at startup; None if key file missing
+
+MISSION_EXPIRY_S = 60.0   # mission commands are longer-lived than motion (30 s)
+
+
+def _load_op_mission_key():
+    path = os.path.join(STATE_DIR, "op-demo-001.key")
+    try:
+        return env.private_key_from_hex(open(path).read().strip())
+    except (OSError, ValueError) as exc:
+        print(f"[mission] cannot load operator key from {path}: {exc}")
+        return None
+
+
+def _next_mission_nonce() -> int:
+    """Monotonic, durable nonce for mission envelopes (separate from motion nonces)."""
+    path = os.path.join(STATE_DIR, "mission_nonce.json")
+    try:
+        data = json.loads(open(path).read())
+    except (OSError, ValueError):
+        data = {}
+    nonce = data.get(_OP_MISSION_ID, 0) + 1
+    data[_OP_MISSION_ID] = nonce
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(data, f)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
+    return nonce
+
+
+def _new_mission_id(nonce: int) -> str:
+    year = datetime.datetime.now(datetime.timezone.utc).year
+    return f"MSN-{year}-{nonce:05d}"
+
 
 async def _publish_loop():
     tls = aiomqtt.TLSParameters(
@@ -72,6 +113,8 @@ async def _publish_loop():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global _OP_MISSION_KEY
+    _OP_MISSION_KEY = _load_op_mission_key()
     task = asyncio.create_task(_publish_loop())
     yield
     task.cancel()
@@ -113,6 +156,90 @@ async def api_nonce(req: NonceReq):
 @app.post("/api/sign-bytes")
 async def api_sign_bytes(req: SignReq):
     return {"signing_hex": env._signing_bytes(req.envelope).hex()}
+
+
+class MissionDispatchReq(BaseModel):
+    rover_id: str
+    zone: list[float]           # [x0, y0, x1, y1] MAP-frame metres
+    zone_gps: list[float] | None = None  # [lat0, lon0, lat1, lon1]
+    lane_spacing_m: float = 3.0
+    speed: float = 0.28
+
+
+class MissionAbortReq(BaseModel):
+    rover_id: str
+    mission_id: str
+
+
+@app.post("/api/mission/dispatch")
+async def api_mission_dispatch(req: MissionDispatchReq):
+    if _OP_MISSION_KEY is None:
+        raise HTTPException(503, "mission operator key not loaded (missing state/op-demo-001.key)")
+    client = _state["mqtt"]
+    if client is None:
+        raise HTTPException(503, "broker not connected")
+
+    nonce = await asyncio.to_thread(_next_mission_nonce)
+    mission_id = _new_mission_id(nonce)
+    now = time.time()
+    payload = {
+        "class": "mission", "op": "survey_start",
+        "mission_id": mission_id,
+        "zone": req.zone,
+        "lane_spacing_m": req.lane_spacing_m,
+        "speed": req.speed,
+    }
+    if req.zone_gps is not None:
+        payload["zone_gps"] = req.zone_gps
+
+    envelope = env.build_envelope(
+        rover_id=req.rover_id,
+        sender_id=_OP_MISSION_ID,
+        msg_id=nonce,
+        nonce=nonce,
+        issued_at=now,
+        expires_at=now + MISSION_EXPIRY_S,
+        payload=payload,
+        private_key=_OP_MISSION_KEY,
+    )
+    await client.publish(
+        f"mark1/{req.rover_id}/cmd/mission", env.encode(envelope), qos=1)
+
+    # Best-effort Frappe mission record (gap if CP not configured)
+    if _CP is not None:
+        try:
+            await asyncio.to_thread(
+                _CP.upload_mission, mission_id, req.rover_id, None, json.dumps(payload))
+        except Exception as exc:  # noqa: BLE001
+            print(f"[mission] Frappe record skipped: {exc}")
+
+    return {"ok": True, "mission_id": mission_id, "nonce": nonce}
+
+
+@app.post("/api/mission/abort")
+async def api_mission_abort(req: MissionAbortReq):
+    if _OP_MISSION_KEY is None:
+        raise HTTPException(503, "mission operator key not loaded (missing state/op-demo-001.key)")
+    client = _state["mqtt"]
+    if client is None:
+        raise HTTPException(503, "broker not connected")
+
+    nonce = await asyncio.to_thread(_next_mission_nonce)
+    now = time.time()
+    payload = {"class": "mission", "op": "abort", "mission_id": req.mission_id}
+    envelope = env.build_envelope(
+        rover_id=req.rover_id,
+        sender_id=_OP_MISSION_ID,
+        msg_id=nonce,
+        nonce=nonce,
+        issued_at=now,
+        expires_at=now + MISSION_EXPIRY_S,
+        payload=payload,
+        private_key=_OP_MISSION_KEY,
+    )
+    await client.publish(
+        f"mark1/{req.rover_id}/cmd/mission", env.encode(envelope), qos=1)
+    return {"ok": True, "mission_id": req.mission_id, "nonce": nonce}
 
 
 @app.post("/api/command")

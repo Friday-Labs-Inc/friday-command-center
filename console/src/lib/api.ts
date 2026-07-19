@@ -456,6 +456,35 @@ export const signBytes = (envelope: unknown): Promise<SignBytesResponse> =>
 export const sendCommand = (envelope: unknown, signature: string): Promise<CommandResponse> =>
   postJSON('/api/command', { envelope, signature })
 
+// ── Mission quick-dispatch (FCC self-signed, OP-DEMO-001) ─────────────────────
+
+export interface MissionDispatchBody {
+  rover_id: string
+  zone: [number, number, number, number]   // [x0, y0, x1, y1] MAP-frame metres
+  zone_gps?: [number, number, number, number]
+  lane_spacing_m?: number
+  speed?: number
+}
+
+export interface MissionDispatchResult {
+  ok: boolean
+  mission_id: string
+  nonce: number
+}
+
+export interface MissionAbortBody {
+  rover_id: string
+  mission_id: string
+}
+
+/** POST /api/mission/dispatch — build, sign, and publish a survey_start mission */
+export const dispatchSurvey = (body: MissionDispatchBody): Promise<MissionDispatchResult> =>
+  postJSON('/api/mission/dispatch', body)
+
+/** POST /api/mission/abort — publish a mission abort command */
+export const abortMission = (body: MissionAbortBody): Promise<MissionDispatchResult> =>
+  postJSON('/api/mission/abort', body)
+
 // ── Telemetry recorder (gateway-local, data plane) ────────────────────────────
 
 export interface TelemetrySample {

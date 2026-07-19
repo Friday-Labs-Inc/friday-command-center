@@ -7,7 +7,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { missions as fetchMissions, mission as fetchMission, type Mission, type Waypoint } from '../../lib/api'
+import { missions as fetchMissions, mission as fetchMission, type Mission, type Waypoint, dispatchSurvey, abortMission, telemetryLatest } from '../../lib/api'
 import { useDeck } from '../data'
 import { Panel } from '../bits'
 
@@ -167,6 +167,212 @@ function Dot({ status }: { status: DStep['status'] }) {
   return <div style={{ width: 10, height: 10, borderRadius: '50%', border: '1.5px solid var(--dim)', flexShrink: 0 }} />
 }
 
+// ─── Survey dispatch panel ────────────────────────────────────────────────────
+
+const DISPATCH_ROVER = 'MARK1-SIM-001'
+
+const ZONE_PRESETS: Array<{ label: string; zone: [number, number, number, number] }> = [
+  { label: '30×30 m @ spawn', zone: [-15, -15, 15, 15] },
+  { label: '60×60 m', zone: [-30, -30, 30, 30] },
+  { label: '20×10 m N-strip', zone: [-10, 0, 10, 10] },
+]
+
+interface MissionProgress {
+  mission_id: string
+  state: string         // active | complete | aborted | failed
+  waypoint_i: number
+  waypoint_n: number
+  coverage_pct: number
+  stamp: number
+}
+
+const DISPATCH_POLL_MS = 3000
+
+function DispatchPanel() {
+  const { pushEvent } = useDeck()
+  const [presetIdx, setPresetIdx] = useState(0)
+  const [dispatching, setDispatching] = useState(false)
+  const [activeMissionId, setActiveMissionId] = useState<string | null>(null)
+  const [progress, setProgress] = useState<MissionProgress | null>(null)
+  const [dispatchErr, setDispatchErr] = useState<string | null>(null)
+
+  // Poll tlm/mission whenever we have an active mission
+  useEffect(() => {
+    if (!activeMissionId) return
+    let alive = true
+    const poll = async () => {
+      try {
+        const latest = await telemetryLatest(DISPATCH_ROVER)
+        if (!alive) return
+        const ms = latest.kinds['mission']
+        if (!ms?.data) return
+        const d = ms.data as Record<string, unknown>
+        if (d['mission_id'] !== activeMissionId) return
+        setProgress({
+          mission_id: d['mission_id'] as string,
+          state: d['state'] as string ?? '?',
+          waypoint_i: Number(d['waypoint_i'] ?? 0),
+          waypoint_n: Number(d['waypoint_n'] ?? 0),
+          coverage_pct: Number(d['coverage_pct'] ?? 0),
+          stamp: Number(d['stamp'] ?? 0),
+        })
+        const state = d['state'] as string
+        if (state === 'complete' || state === 'aborted' || state === 'failed') {
+          pushEvent('mission', `${activeMissionId} → ${state.toUpperCase()}`,
+            state === 'complete' ? 'ok' : 'warn')
+        }
+      } catch { /* gateway unreachable — keep retrying */ }
+    }
+    poll()
+    const t = setInterval(poll, DISPATCH_POLL_MS)
+    return () => { alive = false; clearInterval(t) }
+  }, [activeMissionId, pushEvent])
+
+  const isActive = progress && (progress.state === 'active')
+
+  const handleDispatch = async () => {
+    setDispatching(true)
+    setDispatchErr(null)
+    setProgress(null)
+    try {
+      const preset = ZONE_PRESETS[presetIdx]
+      const res = await dispatchSurvey({
+        rover_id: DISPATCH_ROVER,
+        zone: preset.zone,
+        lane_spacing_m: 3.0,
+        speed: 0.28,
+      })
+      setActiveMissionId(res.mission_id)
+      pushEvent('mission', `dispatched ${res.mission_id} (${preset.label})`, 'ok')
+    } catch (e) {
+      setDispatchErr((e as Error).message)
+    } finally {
+      setDispatching(false)
+    }
+  }
+
+  const handleAbort = async () => {
+    if (!activeMissionId) return
+    setDispatchErr(null)
+    try {
+      await abortMission({ rover_id: DISPATCH_ROVER, mission_id: activeMissionId })
+      pushEvent('mission', `abort sent → ${activeMissionId}`, 'warn')
+    } catch (e) {
+      setDispatchErr((e as Error).message)
+    }
+  }
+
+  const stateColor = (s: string) => {
+    if (s === 'active') return 'var(--cyan)'
+    if (s === 'complete') return 'var(--ok)'
+    if (s === 'aborted' || s === 'failed') return 'var(--crit)'
+    return 'var(--dim)'
+  }
+
+  return (
+    <Panel title="Dispatch Survey" meta={<>MARK1-SIM-001</>} style={{ display: 'flex', flexDirection: 'column' }}>
+      <div style={{ flex: 1, padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {/* zone selector */}
+        <div>
+          <div style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--dim)', marginBottom: 5, letterSpacing: '0.08em' }}>
+            ZONE PRESET
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {ZONE_PRESETS.map((p, i) => (
+              <button
+                key={p.label}
+                className="dk-btn"
+                style={i === presetIdx ? { borderColor: 'var(--cyan)', color: 'var(--cyan)' } : undefined}
+                onClick={() => setPresetIdx(i)}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+          <div style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--dim)', marginTop: 5 }}>
+            zone {ZONE_PRESETS[presetIdx].zone.join(', ')} m · lane 3 m · 0.28 m/s
+          </div>
+        </div>
+
+        {/* dispatch / abort buttons */}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button
+            className="dk-btn primary"
+            disabled={dispatching}
+            onClick={handleDispatch}
+          >
+            {dispatching ? 'DISPATCHING…' : 'DISPATCH SURVEY'}
+          </button>
+          {activeMissionId && (
+            <button
+              className="dk-btn"
+              style={{ borderColor: 'var(--crit)', color: 'var(--crit)' }}
+              disabled={!isActive}
+              onClick={handleAbort}
+            >
+              ABORT
+            </button>
+          )}
+        </div>
+
+        {dispatchErr && (
+          <div style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--crit)' }}>
+            {dispatchErr}
+          </div>
+        )}
+
+        {/* live progress strip */}
+        {activeMissionId && (
+          <div style={{ borderTop: '1px solid var(--line)', paddingTop: 10 }}>
+            <div style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--dim)', letterSpacing: '0.08em', marginBottom: 6 }}>
+              MISSION PROGRESS
+            </div>
+            <div style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--white)', marginBottom: 4 }}>
+              {activeMissionId}
+            </div>
+            {progress ? (
+              <>
+                <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 6 }}>
+                  <span>
+                    <span style={{ color: 'var(--dim)', fontSize: 10 }}>STATE </span>
+                    <span style={{ color: stateColor(progress.state), fontFamily: 'var(--mono)', fontSize: 11 }}>
+                      {progress.state.toUpperCase()}
+                    </span>
+                  </span>
+                  <span>
+                    <span style={{ color: 'var(--dim)', fontSize: 10 }}>WP </span>
+                    <span style={{ fontFamily: 'var(--mono)', fontSize: 11 }}>
+                      {progress.waypoint_i}/{progress.waypoint_n}
+                    </span>
+                  </span>
+                  <span>
+                    <span style={{ color: 'var(--dim)', fontSize: 10 }}>COV </span>
+                    <span style={{ fontFamily: 'var(--mono)', fontSize: 11 }}>
+                      {progress.coverage_pct.toFixed(1)}%
+                    </span>
+                  </span>
+                </div>
+                {/* coverage bar */}
+                <div style={{ height: 4, borderRadius: 2, background: 'var(--line)', overflow: 'hidden' }}>
+                  <motion.div
+                    animate={{ width: `${Math.min(100, progress.coverage_pct)}%` }}
+                    transition={{ duration: 0.4 }}
+                    style={{ height: '100%', background: progress.state === 'complete' ? 'var(--ok)' : 'var(--cyan)', borderRadius: 2 }}
+                  />
+                </div>
+              </>
+            ) : (
+              <div style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--dim)' }}>
+                waiting for rover telemetry…
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </Panel>
+  )
+}
+
 // ─── Main view ────────────────────────────────────────────────────────────────
 
 export function MissionsView() {
@@ -225,13 +431,13 @@ export function MissionsView() {
       </div>
 
       {/* body */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 14, minHeight: 0 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr', gap: 14, minHeight: 0 }}>
         {/* left: sector map from real waypoints */}
         <Panel title="Sector Map" meta={<>waypoints · fit</>} style={{ display: 'flex', flexDirection: 'column' }}>
           <SectorCanvas waypoints={waypoints} />
         </Panel>
 
-        {/* right: mission selector + real lifecycle */}
+        {/* centre: mission selector + real lifecycle */}
         <Panel title="Mission" meta={<>{list ? `${list.length} on file` : '—'}</>} style={{ display: 'flex', flexDirection: 'column' }}>
           <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', padding: '10px 14px 0' }}>
             {/* selector */}
@@ -284,6 +490,9 @@ export function MissionsView() {
             </div>
           </div>
         </Panel>
+
+        {/* right: survey quick-dispatch */}
+        <DispatchPanel />
       </div>
     </div>
   )
