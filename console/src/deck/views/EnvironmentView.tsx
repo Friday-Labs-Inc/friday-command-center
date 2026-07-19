@@ -258,7 +258,8 @@ export function EnvironmentView() {
           ) : (
             <div style={{ padding: '10px 2px', fontSize: 12, opacity: 0.6 }}>
               {gpsLink === 'unreachable' ? 'telemetry gateway unreachable'
-                : 'no GPS telemetry recorded — rover publisher not deployed yet'}
+                : ROVERS[roverIdx].sim ? 'the sim has no GPS — virtual sensor not modeled yet'
+                : 'no recent GPS — phone pod off or GPSd Forwarder asleep'}
             </div>
           )}
         </Panel>
@@ -295,7 +296,8 @@ export function EnvironmentView() {
           ) : (
             <div style={{ padding: '10px 2px', fontSize: 12, opacity: 0.6 }}>
               {imuLink === 'unreachable' ? 'telemetry gateway unreachable'
-                : 'no attitude telemetry recorded — phone pod away or HyperIMU stopped'}
+                : ROVERS[roverIdx].sim ? 'the sim has no phone pod'
+                : 'no recent attitude — phone pod away or HyperIMU stopped'}
             </div>
           )}
         </Panel>
@@ -320,7 +322,9 @@ export function EnvironmentView() {
           <div style={{ padding: '10px 2px', fontSize: 12, lineHeight: 1.8, opacity: 0.75 }}>
             rover → signed CBOR envelope → EMQX (mTLS) → gateway recorder → this panel.<br />
             {envLink === 'pending'
-              ? 'The pods are live on the rover bus; the rover-side telemetry publisher is the next deploy.'
+              ? (ROVERS[roverIdx].sim
+                  ? 'The sim radios odometry today; virtual env/GPS sensors are a future add.'
+                  : 'No env samples recorded — pod or radio quiet.')
               : `last env sample ${env?.age_s != null ? `${Math.round(env.age_s)}s ago` : '—'} · history ${histRef.current.get('temperature_c')?.length ?? 0} samples`}
           </div>
         </Panel>
