@@ -10,16 +10,11 @@
 //   sample unsigned                → UNSIGNED chip (signed shows SIGNED)
 
 import { useEffect, useRef, useState } from 'react'
-import { useDeck } from '../data'
+import { ROVERS, useDeck } from '../data'
 import { Panel, ViewHead } from '../bits'
 import { telemetryLatest, telemetryHistory } from '../../lib/api'
 import type { TelemetrySample } from '../../lib/api'
 
-// field rover + the Gazebo sim — distinct identities, distinct signing keys
-const ROVERS = [
-  { id: 'MARK1-001',     label: 'FIELD', sim: false },
-  { id: 'MARK1-SIM-001', label: 'SIM',   sim: true },
-] as const
 const POLL_MS = 5000
 const STALE_S = 30
 

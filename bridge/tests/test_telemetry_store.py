@@ -60,3 +60,15 @@ def test_kinds_lists_disk_and_memory(tmp_path):
     ts.add("R", "gps", {"y": 2}, True)
     ts2 = TelemetryStore(str(tmp_path))       # disk-only view
     assert ts2.kinds("R") == ["env", "gps"]
+
+
+def test_ring_override_per_kind(tmp_path):
+    ts = TelemetryStore(str(tmp_path), ring_size=100, ring_overrides={"map": 2})
+    for i in range(5):
+        ts.add("R", "map", {"i": i}, True, ts=float(i))
+        ts.add("R", "env", {"i": i}, True, ts=float(i))
+    assert [s["data"]["i"] for s in ts.recent("R", "map", 50)] == [3, 4]
+    assert len(ts.recent("R", "env", 50)) == 5
+    # restart honours the override on reload + compaction
+    ts2 = TelemetryStore(str(tmp_path), ring_size=100, ring_overrides={"map": 2})
+    assert [s["data"]["i"] for s in ts2.recent("R", "map", 50)] == [3, 4]
