@@ -69,7 +69,8 @@ async function inflateVoxels(sample: TelemetrySample): Promise<VoxelData | null>
 
 // height -> colour: explored-floor teal low, warm high (reads as real relief)
 function heightColor(t: number): THREE.Color {
-  const lo = new THREE.Color(0x2a8fb0), hi = new THREE.Color(0xffd27f)
+  // bright cyan floor -> warm amber peaks, so relief reads at a glance
+  const lo = new THREE.Color(0x39d0e6), hi = new THREE.Color(0xffc04d)
   return lo.clone().lerp(hi, Math.max(0, Math.min(1, t)))
 }
 
@@ -199,6 +200,13 @@ export function TerrainView() {
     host.appendChild(renderer.domElement)
 
     const scene = new THREE.Scene()
+    scene.add(new THREE.AmbientLight(0xffffff, 1.15))
+    const key = new THREE.DirectionalLight(0xffffff, 1.5)
+    key.position.set(4, 8, 5)
+    scene.add(key)
+    const rim = new THREE.DirectionalLight(0x8fd0ff, 0.5)
+    rim.position.set(-5, 3, -4)
+    scene.add(rim)
     const pivot = new THREE.Group()
     scene.add(pivot)
     const camera = new THREE.PerspectiveCamera(52, W / H, 0.01, 500)
@@ -253,7 +261,7 @@ export function TerrainView() {
       if (voxelMesh) { pivot.remove(voxelMesh); voxelMesh.geometry.dispose() }
       const count = v.coords.length / 3
       const g = new THREE.BoxGeometry(v.vs, v.vs, v.vs)
-      const mat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.9 })
+      const mat = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: 0x0a1a24, emissiveIntensity: 0.4 })
       voxelMesh = new THREE.InstancedMesh(g, mat, count)
       const tmp = new THREE.Object3D()
       let zmax = 0.1
@@ -281,7 +289,7 @@ export function TerrainView() {
       // free-space floor, centred on the map extent
       floor = new THREE.Mesh(
         new THREE.PlaneGeometry(mw, mh),
-        new THREE.MeshBasicMaterial({ color: 0x0a1a24, transparent: true, opacity: 0.85 }))
+        new THREE.MeshBasicMaterial({ color: 0x0e2634, transparent: true, opacity: 0.9 }))
       floor.rotation.x = -Math.PI / 2
       floor.position.set(m.ox + mw / 2, -0.01, -(m.oy + mh / 2))
       pivot.add(floor)
