@@ -9,6 +9,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { ROVERS, useDeck } from '../data'
 import { Panel, ViewHead, Legend } from '../bits'
 import { telemetryLatest } from '../../lib/api'
@@ -115,7 +116,28 @@ export function TerrainView() {
     odomRef.current = null; setUpdates(0)
     load()
     const iv = setInterval(load, POLL_MS)
-    return () => { alive = false; clearInterval(iv) }
+    // the gateway broadcasts every verified telemetry event — ride it for
+    // smooth 2 Hz odom instead of the 5 s poll cadence (poll = fallback)
+    const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`)
+    ws.onmessage = async ev => {
+      try {
+        const m = JSON.parse(ev.data)
+        if (m.rover !== rover.id || !m.verified) return
+        if (m.kind === 'odom' && m.data && typeof m.data.x === 'number') {
+          const qz = Number(m.data.qz ?? 0), qw = Number(m.data.qw ?? 1)
+          odomRef.current = { x: Number(m.data.x), y: Number(m.data.y), yaw: 2 * Math.atan2(qz, qw) }
+        } else if (m.kind === 'map' && m.data) {
+          const inflated = await inflateMap({ ts: 0, verified: true, data: m.data })
+          if (alive && inflated && inflated.stamp !== builtStampRef.current) {
+            builtStampRef.current = inflated.stamp
+            metaRef.current = inflated
+            setMeta(inflated)
+            setUpdates(u => u + 1)
+          }
+        }
+      } catch { /* malformed frame: the poll loop still covers us */ }
+    }
+    return () => { alive = false; clearInterval(iv); ws.close() }
   }, [rover.id])
 
   // ── scene ──────────────────────────────────────────────────────────────────
@@ -143,8 +165,30 @@ export function TerrainView() {
     rNose.rotation.z = -Math.PI / 2
     rNose.position.x = 0.26
     const roverGrp = new THREE.Group()
-    roverGrp.add(rBody); roverGrp.add(rNose)
-    roverGrp.position.y = 0.12
+    const marker = new THREE.Group()
+    marker.add(rBody); marker.add(rNose)
+    marker.position.y = 0.12
+    roverGrp.add(marker)
+    // locator halo so the rover reads on the dark floor at any zoom
+    const halo = new THREE.Mesh(
+      new THREE.RingGeometry(0.22, 0.3, 24),
+      new THREE.MeshBasicMaterial({ color: 0x3be896, transparent: true, opacity: 0.35, side: THREE.DoubleSide }))
+    halo.rotation.x = -Math.PI / 2
+    halo.position.y = 0.01
+    roverGrp.add(halo)
+    // the REAL body: decimated Mark 1 CAD (chassis + 6 wheels), wheel axles
+    // at y=0 in the asset -> lift by wheel radius so it stands on the floor
+    new GLTFLoader().load('/assets/mark1.glb', g => {
+      g.scene.position.y = 0.0668
+      g.scene.traverse(o => {
+        const mesh = o as THREE.Mesh
+        if (mesh.isMesh) mesh.material = new THREE.MeshBasicMaterial({
+          color: (mesh.material as THREE.MeshStandardMaterial)?.color ?? 0xd9d4c6,
+          wireframe: false, transparent: true, opacity: 0.95 })
+      })
+      roverGrp.add(g.scene)
+      marker.visible = false
+    }, undefined, () => { /* keep the marker if the asset fails */ })
     pivot.add(roverGrp)
 
     let wallsMesh: THREE.InstancedMesh | null = null
@@ -230,6 +274,10 @@ export function TerrainView() {
 
   const mapLink = linkOf(mapS, MAP_STALE_S, error)
   const odomLink = linkOf(odomS, ODOM_STALE_S, error)
+  // the map only re-sends on CHANGE: an old map beside live odom means the
+  // world stopped changing — that is completion, not staleness
+  const mapChip: [string, string] =
+    mapLink === 'stale' && odomLink === 'live' ? ['dk-chip ok', 'SETTLED'] : CHIP[mapLink]
   const chip = ([cls, label]: [string, string]) => <span className={cls}>{label}</span>
   const sig = mapS?.verified ? <span className="dk-chip ok">SIGNED</span> : null
   const knownPct = meta ? Math.round((100 * meta.known) / (meta.w * meta.h)) : 0
@@ -254,7 +302,7 @@ export function TerrainView() {
         </>}
       />
       <div style={{ position: 'absolute', top: 16, right: 20, width: 250, zIndex: 5 }}>
-        <Panel title="World model" meta={<>{chip(CHIP[mapLink])} {sig}</>}>
+        <Panel title="World model" meta={<>{chip(mapChip)} {sig}</>}>
           {meta ? (
             <div className="dk-kv" style={{ fontSize: 12, lineHeight: 1.9 }}>
               <div>map <b>{(meta.w * meta.res).toFixed(1)} × {(meta.h * meta.res).toFixed(1)} m</b> @ {(meta.res * 100).toFixed(0)} cm</div>
