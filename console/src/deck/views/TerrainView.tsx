@@ -107,6 +107,13 @@ export function TerrainView() {
   const [meta, setMeta] = useState<MapMeta | null>(null)
   const [voxN, setVoxN] = useState(0)
   const [voxS, setVoxS] = useState<TelemetrySample | undefined>(undefined)
+  const [missionS, setMissionS] = useState<TelemetrySample | undefined>(undefined)
+  // ROVER POV is the honest default: the ground rover has no aerial vantage —
+  // the orbit is the analyst's WORLD MODEL view of accumulated survey data
+  // (a live aerial view arrives with the Spark aerial companion).
+  const [camMode, setCamMode] = useState<'rover' | 'model'>('rover')
+  const camModeRef = useRef<'rover' | 'model'>('rover')
+  useEffect(() => { camModeRef.current = camMode }, [camMode])
   const [error, setError] = useState(false)
   const [updates, setUpdates] = useState(0)
 
@@ -150,6 +157,7 @@ export function TerrainView() {
         }
         const vx = latest.kinds['voxel']
         setVoxS(vx)
+        setMissionS(latest.kinds['mission'])
         const vstamp = Number((vx?.data as Record<string, unknown> | undefined)?.['stamp'] ?? 0)
         if (vx && vstamp !== voxStampRef.current) {
           const vd = await inflateVoxels(vx)
@@ -353,6 +361,7 @@ export function TerrainView() {
     }
 
     const clock = new THREE.Clock()
+    const camTarget = new THREE.Vector3()
     let raf = 0
     const frame = () => {
       const t = clock.getElapsedTime()
@@ -368,9 +377,22 @@ export function TerrainView() {
       }
       const mapExt = m && m.w * m.h > 0 ? Math.max(m.w, m.h) * m.res : 0
       const ext = Math.min(300, Math.max(8, mapExt, voxFrame.ext))
-      const r = ext * 0.85
-      camera.position.set(Math.sin(t * 0.07) * r, ext * 0.55, Math.cos(t * 0.07) * r)
-      camera.lookAt(0, 0, 0)
+      if (camModeRef.current === 'rover' && odomRef.current) {
+        // chase-cam on the rover's own signed pose: the world as the rover
+        // discovered it, not a god's-eye view it doesn't have
+        roverGrp.getWorldPosition(camTarget)
+        const yaw = roverGrp.rotation.y
+        camera.position.set(
+          camTarget.x - Math.cos(yaw) * 3.2,
+          camTarget.y + 1.7,
+          camTarget.z + Math.sin(yaw) * 3.2)
+        camera.lookAt(camTarget.x + Math.cos(yaw) * 2.5, camTarget.y + 0.4,
+                      camTarget.z - Math.sin(yaw) * 2.5)
+      } else {
+        const r = ext * 0.85
+        camera.position.set(Math.sin(t * 0.07) * r, ext * 0.55, Math.cos(t * 0.07) * r)
+        camera.lookAt(0, 0, 0)
+      }
       renderer.render(scene, camera)
       raf = requestAnimationFrame(frame)
     }
@@ -420,6 +442,17 @@ export function TerrainView() {
           {rover.sim
             ? <span className="dk-chip standby">GAZEBO SIM — real SLAM, virtual world</span>
             : <span className="dk-chip prov">FIELD — SLAM not deployed on hardware yet</span>}
+          <span style={{ display: 'inline-block', width: 12 }} />
+          <button onClick={() => setCamMode('rover')}
+            className={camMode === 'rover' ? 'dk-chip ok' : 'dk-chip prov'}
+            style={{ cursor: 'pointer', marginRight: 6, background: 'transparent' }}>
+            ROVER POV
+          </button>
+          <button onClick={() => setCamMode('model')}
+            className={camMode === 'model' ? 'dk-chip ok' : 'dk-chip prov'}
+            style={{ cursor: 'pointer', background: 'transparent' }}>
+            WORLD MODEL · accumulated
+          </button>
         </>}
       />
       <div style={{ position: 'absolute', top: 16, right: 20, width: 250, zIndex: 5 }}>
@@ -431,6 +464,12 @@ export function TerrainView() {
               <div>map age <b>{mapS?.age_s != null ? `${Math.round(mapS.age_s)}s` : '—'}</b> · updates <b>{updates}</b></div>
               <div>rover odom {chip(CHIP[odomLink])}</div>
               <div>3D voxels <b>{voxN.toLocaleString()}</b> {voxS?.verified ? <span className="dk-chip ok">SIGNED</span> : null}</div>
+              {missionS?.data ? (
+                <div>survey <b>{String((missionS.data as Record<string, unknown>)['state'] ?? '?')}</b>
+                  {' '}· wp <b>{String((missionS.data as Record<string, unknown>)['waypoint_i'] ?? '–')}
+                  /{String((missionS.data as Record<string, unknown>)['waypoint_n'] ?? '–')}</b>
+                  {' '}· cov <b>{String((missionS.data as Record<string, unknown>)['coverage_pct'] ?? '–')}%</b></div>
+              ) : null}
             </div>
           ) : (
             <div style={{ fontSize: 12, opacity: 0.65, lineHeight: 1.6 }}>
