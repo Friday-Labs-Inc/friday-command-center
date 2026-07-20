@@ -560,7 +560,7 @@ export function TerrainView() {
                     <span style={{ opacity: 0.6 }}>seen <b>{seen}</b></span>
                   </div>
                   <div style={{ opacity: 0.55, fontSize: 10.5, marginTop: 2 }}>
-                    Nav2 routes around lethal cells, prefers flat
+                    Nav2 cost gradient: flat free · slopes graduated · lethal blocked
                   </div>
                 </div>
               </Panel>
