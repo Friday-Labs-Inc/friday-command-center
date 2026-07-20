@@ -13,6 +13,9 @@ import { ModulesView } from './views/ModulesView'
 import { MissionsView } from './views/MissionsView'
 import { TerrainView } from './views/TerrainView'
 import { EnvironmentView } from './views/EnvironmentView'
+import { ModesView } from './views/ModesView'
+import { BrainView } from './views/BrainView'
+import { SystemView } from './views/SystemView'
 
 // ── nav icons (inline, stroke-only) ──────────────────────────────────────────
 const I = {
@@ -48,6 +51,42 @@ const I = {
   config: (
     <svg viewBox="0 0 16 16" fill="none" stroke="currentColor">
       <rect x="2" y="2" width="12" height="12" rx="1" /><path d="M5 8h6M5 11h4M5 5h6" />
+    </svg>
+  ),
+  system: (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor">
+      <rect x="1.8" y="2.2" width="12.4" height="4" rx="1" /><rect x="1.8" y="9.8" width="12.4" height="4" rx="1" />
+      <circle cx="4.4" cy="4.2" r="0.7" fill="currentColor" /><circle cx="4.4" cy="11.8" r="0.7" fill="currentColor" />
+    </svg>
+  ),
+  modes: (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor">
+      <path d="M2 4.5h12M2 8h12M2 11.5h12" /><circle cx="5" cy="4.5" r="1.5" fill="var(--void)" /><circle cx="10" cy="8" r="1.5" fill="var(--void)" /><circle cx="6.5" cy="11.5" r="1.5" fill="var(--void)" />
+    </svg>
+  ),
+  brain: (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor">
+      <rect x="4.5" y="4.5" width="7" height="7" rx="1" /><path d="M8 1.5v3M8 11.5v3M1.5 8h3M11.5 8h3M4.5 2.5v2M11.5 2.5v2M4.5 11.5v2M11.5 11.5v2" />
+    </svg>
+  ),
+  access: (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor">
+      <circle cx="6" cy="6" r="3.2" /><path d="M8.2 8.2 13.5 13.5M11 11l1.5-1.5M12.5 12.5 14 11" />
+    </svg>
+  ),
+  certs: (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor">
+      <path d="M8 1.5 13.5 4v4.5C13.5 11.5 11 13.7 8 14.5 5 13.7 2.5 11.5 2.5 8.5V4z" /><path d="M6 8l1.6 1.6L10.2 6.5" />
+    </svg>
+  ),
+  audit: (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor">
+      <rect x="2.5" y="1.8" width="11" height="12.4" rx="1" /><path d="M5 5h6M5 8h6M5 11h4" />
+    </svg>
+  ),
+  command: (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor">
+      <rect x="1.8" y="2.5" width="12.4" height="11" rx="1" /><path d="M4.5 6l2 2-2 2M8.5 10h3" />
     </svg>
   ),
 }
@@ -106,6 +145,17 @@ function Nav() {
     ['terrain', 'Terrain', 'terrain'],
     ['environment', 'Environment', 'environment'],
   ]
+  const control: Array<[string, string, IconKey]> = [
+    ['system', 'System', 'system'],
+    ['modes', 'Modes', 'modes'],
+    ['brain', 'Brain', 'brain'],
+  ]
+  const security: Array<[string, string, IconKey]> = [
+    ['access', 'Access', 'access'],
+    ['certificates', 'Certificates', 'certs'],
+    ['security', 'Security', 'audit'],
+    ['command', 'Command', 'command'],
+  ]
   return (
     <nav className="dk-nav" aria-label="Deck navigation">
       <div className="grp">DECK</div>
@@ -114,10 +164,18 @@ function Nav() {
           {I[icon]}<span className="lbl">{label}</span>
         </NavLink>
       ))}
-      <div className="grp">CONFIG · CLASSIC</div>
-      <a href="/system">{I.config}<span className="lbl">System</span><span className="tag">CC</span></a>
-      <a href="/modes">{I.config}<span className="lbl">Modes</span><span className="tag">CC</span></a>
-      <a href="/brain">{I.config}<span className="lbl">Brain</span><span className="tag">CC</span></a>
+      <div className="grp">CONTROL</div>
+      {control.map(([path, label, icon]) => (
+        <NavLink key={label} to={`/deck/${path}`} className={({ isActive }) => (isActive ? 'on' : '')}>
+          {I[icon]}<span className="lbl">{label}</span>
+        </NavLink>
+      ))}
+      <div className="grp">SECURITY</div>
+      {security.map(([path, label, icon]) => (
+        <NavLink key={label} to={`/deck/${path}`} className={({ isActive }) => (isActive ? 'on' : '')}>
+          {I[icon]}<span className="lbl">{label}</span>
+        </NavLink>
+      ))}
       <div className="foot">
         <div className="rovername">◈ MARK1 · FIELD UNIT 001</div>
         <div className="rovermeta">modular research rover<br />ROS 2 Jazzy · domain 42<br />signed MQTT · mTLS</div>
@@ -211,6 +269,9 @@ function DeckMain() {
           <Route path="missions" element={<MissionsView />} />
           <Route path="terrain" element={<TerrainView />} />
           <Route path="environment" element={<EnvironmentView />} />
+          <Route path="system" element={<SystemView />} />
+          <Route path="modes" element={<ModesView />} />
+          <Route path="brain" element={<BrainView />} />
         </Routes>
       </div>
       <div className="dk-scanline" />
