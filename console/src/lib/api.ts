@@ -497,6 +497,16 @@ export interface ModeDispatchResult { ok: boolean; autonomy_level: number; nonce
 export const dispatchMode = (body: ModeDispatchBody): Promise<ModeDispatchResult> =>
   postJSON('/api/mode/dispatch', body)
 
+/** POST /api/mission/approve — L2 Supervised: approve/deny the pending waypoint */
+export interface MissionApproveBody {
+  rover_id: string
+  mission_id: string
+  decision: 'approve' | 'deny'
+  waypoint_i?: number
+}
+export const approveWaypoint = (body: MissionApproveBody): Promise<{ ok: boolean }> =>
+  postJSON('/api/mission/approve', body)
+
 // ── Telemetry recorder (gateway-local, data plane) ────────────────────────────
 
 export interface TelemetrySample {

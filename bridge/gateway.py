@@ -253,6 +253,11 @@ async def proxy_mode_dispatch(req: Request):
     return await _proxy(req, "/api/mode/dispatch")
 
 
+@app.post("/api/mission/approve")
+async def proxy_mission_approve(req: Request):
+    return await _proxy(req, "/api/mission/approve")
+
+
 @app.websocket("/ws")
 async def ws(websocket: WebSocket):
     await hub.join(websocket)

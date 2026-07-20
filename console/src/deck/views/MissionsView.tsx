@@ -7,7 +7,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { missions as fetchMissions, mission as fetchMission, type Mission, type Waypoint, dispatchSurvey, abortMission, telemetryLatest } from '../../lib/api'
+import { missions as fetchMissions, mission as fetchMission, type Mission, type Waypoint, dispatchSurvey, abortMission, approveWaypoint, telemetryLatest } from '../../lib/api'
 import { useDeck } from '../data'
 import { Panel } from '../bits'
 
@@ -183,6 +183,8 @@ interface MissionProgress {
   waypoint_i: number
   waypoint_n: number
   coverage_pct: number
+  awaiting_approval: boolean
+  pending_wp: number
   stamp: number
 }
 
@@ -214,6 +216,8 @@ function DispatchPanel() {
           waypoint_i: Number(d['waypoint_i'] ?? 0),
           waypoint_n: Number(d['waypoint_n'] ?? 0),
           coverage_pct: Number(d['coverage_pct'] ?? 0),
+          awaiting_approval: Boolean(d['awaiting_approval']),
+          pending_wp: Number(d['pending_wp'] ?? -1),
           stamp: Number(d['stamp'] ?? 0),
         })
         const state = d['state'] as string
@@ -229,6 +233,16 @@ function DispatchPanel() {
   }, [activeMissionId, pushEvent])
 
   const isActive = progress && (progress.state === 'active')
+
+  const [approving, setApproving] = useState(false)
+  const handleApproval = async (decision: 'approve' | 'deny') => {
+    if (!progress) return
+    setApproving(true)
+    try {
+      await approveWaypoint({ rover_id: DISPATCH_ROVER, mission_id: progress.mission_id, decision, waypoint_i: progress.pending_wp })
+      pushEvent('mission', `wp ${progress.pending_wp} ${decision === 'approve' ? 'APPROVED' : 'DENIED'}`, decision === 'approve' ? 'ok' : 'warn')
+    } catch { /* keep prompt; operator can retry */ } finally { setApproving(false) }
+  }
 
   const handleDispatch = async () => {
     setDispatching(true)
@@ -357,9 +371,27 @@ function DispatchPanel() {
                   <motion.div
                     animate={{ width: `${Math.min(100, progress.coverage_pct)}%` }}
                     transition={{ duration: 0.4 }}
-                    style={{ height: '100%', background: progress.state === 'complete' ? 'var(--ok)' : 'var(--cyan)', borderRadius: 2 }}
+                    style={{ height: '100%', background: progress.state === 'awaiting_approval' ? 'var(--warn)' : progress.state === 'complete' ? 'var(--ok)' : 'var(--cyan)', borderRadius: 2 }}
                   />
                 </div>
+                {progress.awaiting_approval && (
+                  <div style={{ marginTop: 10, padding: '10px 12px', border: '1px solid rgba(255,180,84,0.5)', borderRadius: 6, background: 'rgba(255,180,84,0.06)' }}>
+                    <div style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--warn)', letterSpacing: '0.06em', fontWeight: 700 }}>
+                      ⏸ L2 SUPERVISED — APPROVAL REQUIRED
+                    </div>
+                    <div style={{ fontFamily: 'var(--mono)', fontSize: 10.5, color: 'var(--dim)', marginTop: 4, lineHeight: 1.5 }}>
+                      Rover paused before waypoint {progress.pending_wp}. Approve to proceed, or deny to skip it.
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                      <button className="dk-btn primary" disabled={approving} onClick={() => handleApproval('approve')}>
+                        {approving ? '…' : 'APPROVE'}
+                      </button>
+                      <button className="dk-btn" disabled={approving} style={{ borderColor: 'rgba(255,77,106,0.4)' }} onClick={() => handleApproval('deny')}>
+                        DENY (skip)
+                      </button>
+                    </div>
+                  </div>
+                )}
               </>
             ) : (
               <div style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--dim)' }}>

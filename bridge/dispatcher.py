@@ -178,6 +178,13 @@ class ModeDispatchReq(BaseModel):
     brain: str = "Rules"
 
 
+class MissionApproveReq(BaseModel):
+    rover_id: str
+    mission_id: str
+    decision: str                # 'approve' | 'deny'
+    waypoint_i: int | None = None
+
+
 @app.post("/api/mission/dispatch")
 async def api_mission_dispatch(req: MissionDispatchReq):
     if _OP_MISSION_KEY is None:
@@ -247,6 +254,34 @@ async def api_mission_abort(req: MissionAbortReq):
     await client.publish(
         f"mark1/{req.rover_id}/cmd/mission", env.encode(envelope), qos=1)
     return {"ok": True, "mission_id": req.mission_id, "nonce": nonce}
+
+
+@app.post("/api/mission/approve")
+async def api_mission_approve(req: MissionApproveReq):
+    """L2 Supervised: operator approves/denies the pending waypoint. Signs a
+    cmd/mission op=approve|deny; the rover's mission executor releases (approve)
+    or skips (deny) the waypoint it paused on."""
+    if _OP_MISSION_KEY is None:
+        raise HTTPException(503, "mission operator key not loaded")
+    client = _state["mqtt"]
+    if client is None:
+        raise HTTPException(503, "broker not connected")
+    if req.decision not in ("approve", "deny"):
+        raise HTTPException(400, "decision must be approve|deny")
+    nonce = await asyncio.to_thread(_next_mission_nonce)
+    now = time.time()
+    payload = {"class": "mission", "op": req.decision, "mission_id": req.mission_id}
+    if req.waypoint_i is not None:
+        payload["waypoint_i"] = req.waypoint_i
+    envelope = env.build_envelope(
+        rover_id=req.rover_id, sender_id=_OP_MISSION_ID,
+        msg_id=nonce, nonce=nonce, issued_at=now,
+        expires_at=now + MISSION_EXPIRY_S, payload=payload,
+        private_key=_OP_MISSION_KEY,
+    )
+    await client.publish(
+        f"mark1/{req.rover_id}/cmd/mission", env.encode(envelope), qos=1)
+    return {"ok": True, "mission_id": req.mission_id, "decision": req.decision, "nonce": nonce}
 
 
 
