@@ -108,6 +108,7 @@ export function TerrainView() {
   const [voxN, setVoxN] = useState(0)
   const [voxS, setVoxS] = useState<TelemetrySample | undefined>(undefined)
   const [missionS, setMissionS] = useState<TelemetrySample | undefined>(undefined)
+  const [terrainS, setTerrainS] = useState<TelemetrySample | undefined>(undefined)
   // ROVER POV is the honest default: the ground rover has no aerial vantage —
   // the orbit is the analyst's WORLD MODEL view of accumulated survey data
   // (a live aerial view arrives with the Spark aerial companion).
@@ -160,6 +161,7 @@ export function TerrainView() {
         const vx = latest.kinds['voxel']
         setVoxS(vx)
         setMissionS(latest.kinds['mission'])
+        setTerrainS(latest.kinds['terrain'])
         const vstamp = Number((vx?.data as Record<string, unknown> | undefined)?.['stamp'] ?? 0)
         if (vx && vstamp !== voxStampRef.current) {
           const vd = await inflateVoxels(vx)
@@ -530,6 +532,41 @@ export function TerrainView() {
             </div>
           ) : null}
         </Panel>
+        {terrainS?.data ? (() => {
+          const td = terrainS.data as Record<string, unknown>
+          const flat = Number(td['flat'] ?? 0)
+          const gentle = Number(td['gentle'] ?? 0)
+          const steep = Number(td['steep'] ?? 0)
+          const rough = Number(td['rough'] ?? 0)
+          const lethal = Number(td['lethal_step'] ?? 0) + Number(td['lethal_slope'] ?? 0) + Number(td['lethal_cliff'] ?? 0)
+          const seen = Number(td['cells_seen'] ?? 0)
+          const bar = (n: number, color: string) => {
+            const pct = seen > 0 ? (n / seen) * 100 : 0
+            return <div style={{ display: 'inline-block', width: `${pct}%`, height: 6, background: color, borderRadius: 2 }} />
+          }
+          return (
+            <div style={{ marginTop: 10 }}>
+              <Panel title="Terrain intelligence" meta={<span className="dk-chip ok">READING</span>}>
+                <div style={{ fontSize: 11.5, lineHeight: 1.45, display: 'grid', gap: 4 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 2, height: 8, background: 'rgba(255,255,255,0.05)', borderRadius: 3, overflow: 'hidden' }}>
+                    {bar(flat, '#15803d')}{bar(gentle, '#84cc16')}{bar(rough, '#eab308')}{bar(steep, '#f97316')}{bar(lethal, '#dc2626')}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: 8, marginTop: 4 }}>
+                    <span style={{ color: '#4ade80' }}>flat <b>{flat}</b></span>
+                    <span style={{ color: '#a3e635' }}>gentle <b>{gentle}</b></span>
+                    <span style={{ color: '#facc15' }}>rough <b>{rough}</b></span>
+                    <span style={{ color: '#fb923c' }}>steep <b>{steep}</b></span>
+                    <span style={{ color: '#f87171' }}>lethal <b>{lethal}</b></span>
+                    <span style={{ opacity: 0.6 }}>seen <b>{seen}</b></span>
+                  </div>
+                  <div style={{ opacity: 0.55, fontSize: 10.5, marginTop: 2 }}>
+                    Nav2 routes around lethal cells, prefers flat
+                  </div>
+                </div>
+              </Panel>
+            </div>
+          )
+        })() : null}
       </div>
       <div style={{ position: 'absolute', bottom: 14, left: 20, zIndex: 5 }}>
         <Legend items={[['#3be896', 'rover · signed odom'], ['#48b6e5', 'reconstructed surface'], ['#f0a545', 'above rover · obstacle'], ['#000000', 'unmapped']]} />
