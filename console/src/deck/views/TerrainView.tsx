@@ -373,7 +373,7 @@ export function TerrainView() {
       if (m && m.stamp !== builtStamp) { rebuild(m); builtStamp = m.stamp }
       const v = voxelRef.current
       // gate: only paint the world during / after a survey mission
-      if (v && v.stamp !== voxBuilt && surveyLiveRef.current) {
+      if (v && v.stamp !== voxBuilt) {
         rebuildVoxels(v); voxBuilt = v.stamp
       }
       const od = odomRef.current
@@ -524,10 +524,10 @@ export function TerrainView() {
             </div>
           )}
           {!surveyLive && meta ? (
-            <div style={{ marginTop: 10, padding: '8px 10px', border: '1px dashed rgba(255,180,84,0.4)', borderRadius: 6, fontSize: 11.5, lineHeight: 1.45, color: 'rgba(255,180,84,0.9)' }}>
-              <b style={{ letterSpacing: '.08em', fontSize: 10 }}>NO ACTIVE SURVEY</b>
-              <div style={{ marginTop: 3, color: 'rgba(210,225,240,0.75)' }}>
-                The 3D world model is captured during a SURVEY mission. Dispatch one from the Missions view to have the rover explore and reconstruct a zone.
+            <div style={{ marginTop: 10, padding: '8px 10px', border: '1px dashed rgba(120,170,220,0.35)', borderRadius: 6, fontSize: 11.5, lineHeight: 1.45, color: 'rgba(160,200,240,0.85)' }}>
+              <b style={{ letterSpacing: '.08em', fontSize: 10 }}>FREE EXPLORATION</b>
+              <div style={{ marginTop: 3, color: 'rgba(210,225,240,0.72)' }}>
+                Live 3D reconstruction as the rover drives. Dispatch a SURVEY mission from the Missions view to sweep a defined zone with structured coverage tracking.
               </div>
             </div>
           ) : null}
