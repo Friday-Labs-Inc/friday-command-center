@@ -16,6 +16,10 @@ import { EnvironmentView } from './views/EnvironmentView'
 import { ModesView } from './views/ModesView'
 import { BrainView } from './views/BrainView'
 import { SystemView } from './views/SystemView'
+import { AccessView } from './views/AccessView'
+import { CertificatesView } from './views/CertificatesView'
+import { SecurityView } from './views/SecurityView'
+import { CommandView } from './views/CommandView'
 
 // ── nav icons (inline, stroke-only) ──────────────────────────────────────────
 const I = {
@@ -272,6 +276,10 @@ function DeckMain() {
           <Route path="system" element={<SystemView />} />
           <Route path="modes" element={<ModesView />} />
           <Route path="brain" element={<BrainView />} />
+          <Route path="access" element={<AccessView />} />
+          <Route path="certificates" element={<CertificatesView />} />
+          <Route path="security" element={<SecurityView />} />
+          <Route path="command" element={<CommandView />} />
         </Routes>
       </div>
       <div className="dk-scanline" />
