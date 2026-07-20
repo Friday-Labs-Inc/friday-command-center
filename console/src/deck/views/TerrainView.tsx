@@ -113,7 +113,8 @@ export function TerrainView() {
   // (a live aerial view arrives with the Spark aerial companion).
   const [camMode, setCamMode] = useState<'rover' | 'model'>('rover')
   const camModeRef = useRef<'rover' | 'model'>('rover')
-  useEffect(() => { camModeRef.current = camMode }, [camMode])
+  const camDirtyRef = useRef(false)
+  useEffect(() => { camModeRef.current = camMode; camDirtyRef.current = true }, [camMode])
   const [error, setError] = useState(false)
   const [updates, setUpdates] = useState(0)
 
@@ -377,17 +378,24 @@ export function TerrainView() {
       }
       const mapExt = m && m.w * m.h > 0 ? Math.max(m.w, m.h) * m.res : 0
       const ext = Math.min(300, Math.max(8, mapExt, voxFrame.ext))
-      if (camModeRef.current === 'rover' && odomRef.current) {
-        // chase-cam on the rover's own signed pose: the world as the rover
-        // discovered it, not a god's-eye view it doesn't have
+      if (camModeRef.current === 'rover') {
+        // Chase-cam on the rover's own signed pose. Snap the rover proxy on
+        // mode change so the camera does not linger on the (0,0) origin
+        // during the 0.12-per-frame interpolation catch-up.
+        if (camDirtyRef.current && odomRef.current) {
+          roverGrp.position.set(odomRef.current.x, roverGrp.position.y, -odomRef.current.y)
+          roverGrp.rotation.y = odomRef.current.yaw
+          camDirtyRef.current = false
+        }
         roverGrp.getWorldPosition(camTarget)
         const yaw = roverGrp.rotation.y
+        // 4.5 m back, 2.2 m up, looking 3 m ahead: reads clearly at Mark 1 scale
         camera.position.set(
-          camTarget.x - Math.cos(yaw) * 3.2,
-          camTarget.y + 1.7,
-          camTarget.z + Math.sin(yaw) * 3.2)
-        camera.lookAt(camTarget.x + Math.cos(yaw) * 2.5, camTarget.y + 0.4,
-                      camTarget.z - Math.sin(yaw) * 2.5)
+          camTarget.x - Math.cos(yaw) * 4.5,
+          camTarget.y + 2.2,
+          camTarget.z + Math.sin(yaw) * 4.5)
+        camera.lookAt(camTarget.x + Math.cos(yaw) * 3.0, camTarget.y + 0.3,
+                      camTarget.z - Math.sin(yaw) * 3.0)
       } else {
         const r = ext * 0.85
         camera.position.set(Math.sin(t * 0.07) * r, ext * 0.55, Math.cos(t * 0.07) * r)
@@ -458,18 +466,40 @@ export function TerrainView() {
       <div style={{ position: 'absolute', top: 16, right: 20, width: 250, zIndex: 5 }}>
         <Panel title="World model" meta={<>{chip(mapChip)} {sig}</>}>
           {meta ? (
-            <div className="dk-kv" style={{ fontSize: 12, lineHeight: 1.9 }}>
-              <div>map <b>{(meta.w * meta.res).toFixed(1)} × {(meta.h * meta.res).toFixed(1)} m</b> @ {(meta.res * 100).toFixed(0)} cm</div>
-              <div>known <b>{knownPct}%</b> · wall cells <b>{meta.walls}</b></div>
-              <div>map age <b>{mapS?.age_s != null ? `${Math.round(mapS.age_s)}s` : '—'}</b> · updates <b>{updates}</b></div>
-              <div>rover odom {chip(CHIP[odomLink])}</div>
-              <div>3D voxels <b>{voxN.toLocaleString()}</b> {voxS?.verified ? <span className="dk-chip ok">SIGNED</span> : null}</div>
-              {missionS?.data ? (
-                <div>survey <b>{String((missionS.data as Record<string, unknown>)['state'] ?? '?')}</b>
-                  {' '}· wp <b>{String((missionS.data as Record<string, unknown>)['waypoint_i'] ?? '–')}
-                  /{String((missionS.data as Record<string, unknown>)['waypoint_n'] ?? '–')}</b>
-                  {' '}· cov <b>{String((missionS.data as Record<string, unknown>)['coverage_pct'] ?? '–')}%</b></div>
-              ) : null}
+            <div style={{ fontSize: 12, lineHeight: 1.55, display: 'grid', gap: 6 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '78px 1fr', rowGap: 4, columnGap: 8 }}>
+                <span style={{ opacity: 0.55 }}>map</span>
+                <b>{(meta.w * meta.res).toFixed(1)} × {(meta.h * meta.res).toFixed(1)} m &middot; {(meta.res * 100).toFixed(0)} cm</b>
+                <span style={{ opacity: 0.55 }}>known</span>
+                <b>{knownPct}%</b>
+                <span style={{ opacity: 0.55 }}>age</span>
+                <b>{mapS?.age_s != null ? `${Math.round(mapS.age_s)} s` : '—'} &middot; {updates} update{updates === 1 ? '' : 's'}</b>
+                <span style={{ opacity: 0.55 }}>voxels</span>
+                <b>{voxN.toLocaleString()}</b>
+                <span style={{ opacity: 0.55 }}>odom</span>
+                <span>{chip(CHIP[odomLink])}</span>
+              </div>
+              {missionS?.data ? (() => {
+                const md = missionS.data as Record<string, unknown>
+                const state = String(md['state'] ?? '?')
+                const wi = md['waypoint_i']; const wn = md['waypoint_n']
+                const cov = md['coverage_pct']
+                const cls = state === 'active' ? 'dk-chip ok' : state === 'complete' ? 'dk-chip ok' : state === 'failed' || state === 'aborted' ? 'dk-chip crit' : 'dk-chip prov'
+                return (
+                  <div style={{ borderTop: '1px dotted rgba(90,115,150,0.25)', paddingTop: 6, display: 'grid', gap: 4 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ opacity: 0.55 }}>survey</span>
+                      <span className={cls}>{state.toUpperCase()}</span>
+                    </div>
+                    {wi != null && wn != null ? (
+                      <div style={{ display: 'grid', gridTemplateColumns: '78px 1fr', columnGap: 8 }}>
+                        <span style={{ opacity: 0.55 }}>waypoint</span><b>{String(wi)} / {String(wn)}</b>
+                        <span style={{ opacity: 0.55 }}>coverage</span><b>{cov != null ? `${cov}%` : '—'}</b>
+                      </div>
+                    ) : null}
+                  </div>
+                )
+              })() : null}
             </div>
           ) : (
             <div style={{ fontSize: 12, opacity: 0.65, lineHeight: 1.6 }}>
@@ -481,7 +511,7 @@ export function TerrainView() {
         </Panel>
       </div>
       <div style={{ position: 'absolute', bottom: 14, left: 20, zIndex: 5 }}>
-        <Legend items={[['#48e5f2', 'wall (occupied cell)'], ['#3be896', 'rover · signed odom'], ['#0a1a24', 'explored floor'], ['#000000', 'unknown']]} />
+        <Legend items={[['#3be896', 'rover · signed odom'], ['#48b6e5', 'reconstructed surface'], ['#f0a545', 'above rover · obstacle'], ['#000000', 'unmapped']]} />
       </div>
     </div>
   )
