@@ -115,6 +115,7 @@ export function TerrainView() {
   const camModeRef = useRef<'rover' | 'model'>('rover')
   const camDirtyRef = useRef(false)
   useEffect(() => { camModeRef.current = camMode; camDirtyRef.current = true }, [camMode])
+  const surveyLiveRef = useRef(false)
   const [error, setError] = useState(false)
   const [updates, setUpdates] = useState(0)
 
@@ -369,7 +370,10 @@ export function TerrainView() {
       const m = metaRef.current
       if (m && m.stamp !== builtStamp) { rebuild(m); builtStamp = m.stamp }
       const v = voxelRef.current
-      if (v && v.stamp !== voxBuilt) { rebuildVoxels(v); voxBuilt = v.stamp }
+      // gate: only paint the world during / after a survey mission
+      if (v && v.stamp !== voxBuilt && surveyLiveRef.current) {
+        rebuildVoxels(v); voxBuilt = v.stamp
+      }
       const od = odomRef.current
       if (od) {
         roverGrp.position.x += (od.x - roverGrp.position.x) * 0.12
@@ -424,6 +428,15 @@ export function TerrainView() {
 
   const mapLink = linkOf(mapS, MAP_STALE_S, error)
   const odomLink = linkOf(odomS, ODOM_STALE_S, error)
+  // Mission-scoped world model per user directive 2026-07-19: the 3D
+  // reconstruction is dispatched as a survey mission, not an ambient feed.
+  // 'active' means a survey is running; 'complete' keeps the finished model
+  // visible; anything else (or no mission) shows the honest empty state.
+  const surveyState = missionS?.data && typeof missionS.data === 'object'
+    ? String(((missionS.data as Record<string, unknown>)['state'] ?? '')).toLowerCase()
+    : ''
+  const surveyLive = surveyState === 'active' || surveyState === 'complete'
+  useEffect(() => { surveyLiveRef.current = surveyLive }, [surveyLive])
   // the map only re-sends on CHANGE: an old map beside live odom means the
   // world stopped changing — that is completion, not staleness
   const mapChip: [string, string] =
@@ -508,6 +521,14 @@ export function TerrainView() {
                 : 'no map telemetry — SLAM does not run on the field rover yet'}
             </div>
           )}
+          {!surveyLive && meta ? (
+            <div style={{ marginTop: 10, padding: '8px 10px', border: '1px dashed rgba(255,180,84,0.4)', borderRadius: 6, fontSize: 11.5, lineHeight: 1.45, color: 'rgba(255,180,84,0.9)' }}>
+              <b style={{ letterSpacing: '.08em', fontSize: 10 }}>NO ACTIVE SURVEY</b>
+              <div style={{ marginTop: 3, color: 'rgba(210,225,240,0.75)' }}>
+                The 3D world model is captured during a SURVEY mission. Dispatch one from the Missions view to have the rover explore and reconstruct a zone.
+              </div>
+            </div>
+          ) : null}
         </Panel>
       </div>
       <div style={{ position: 'absolute', bottom: 14, left: 20, zIndex: 5 }}>
