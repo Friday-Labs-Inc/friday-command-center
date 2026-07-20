@@ -171,6 +171,13 @@ class MissionAbortReq(BaseModel):
     mission_id: str
 
 
+class ModeDispatchReq(BaseModel):
+    rover_id: str
+    autonomy_level: int          # 0..3
+    mission_profile: str = "Bench"
+    brain: str = "Rules"
+
+
 @app.post("/api/mission/dispatch")
 async def api_mission_dispatch(req: MissionDispatchReq):
     if _OP_MISSION_KEY is None:
@@ -241,6 +248,38 @@ async def api_mission_abort(req: MissionAbortReq):
         f"mark1/{req.rover_id}/cmd/mission", env.encode(envelope), qos=1)
     return {"ok": True, "mission_id": req.mission_id, "nonce": nonce}
 
+
+
+@app.post("/api/mode/dispatch")
+async def api_mode_dispatch(req: ModeDispatchReq):
+    """Dispatch a signed autonomy-mode command to the rover. Mirrors mission
+    dispatch: the rover's command router applies it (publishes the enforced
+    autonomy level + gates motion). This is what makes the FCC mode ACT."""
+    if _OP_MISSION_KEY is None:
+        raise HTTPException(503, "operator key not loaded (missing state/op-demo-001.key)")
+    client = _state["mqtt"]
+    if client is None:
+        raise HTTPException(503, "broker not connected")
+    if req.autonomy_level not in (0, 1, 2, 3):
+        raise HTTPException(400, "autonomy_level must be 0..3")
+
+    nonce = await asyncio.to_thread(_next_mission_nonce)
+    now = time.time()
+    payload = {
+        "class": "mode",
+        "autonomy_level": req.autonomy_level,
+        "mission_profile": req.mission_profile,
+        "brain": req.brain,
+    }
+    envelope = env.build_envelope(
+        rover_id=req.rover_id, sender_id=_OP_MISSION_ID,
+        msg_id=nonce, nonce=nonce, issued_at=now,
+        expires_at=now + MISSION_EXPIRY_S, payload=payload,
+        private_key=_OP_MISSION_KEY,
+    )
+    await client.publish(
+        f"mark1/{req.rover_id}/cmd/mode", env.encode(envelope), qos=1)
+    return {"ok": True, "autonomy_level": req.autonomy_level, "nonce": nonce}
 
 @app.post("/api/command")
 async def api_command(req: CommandReq):

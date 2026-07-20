@@ -99,7 +99,7 @@ class Hub:
 hub = Hub()
 _rover_keys: dict = {}  # rover_id -> Ed25519PublicKey (telemetry signing)
 # sensor kinds worth remembering (odom = pose; env/gps = the world-sense pods)
-RECORDED_KINDS = ("env", "gps", "odom", "imu", "map", "voxel", "mission", "terrain")
+RECORDED_KINDS = ("env", "gps", "odom", "imu", "map", "voxel", "mission", "terrain", "autonomy")
 # a map sample is a whole compressed occupancy grid — keep a short history
 _TLM = TelemetryStore(STATE_DIR, ring_overrides={"map": 8, "voxel": 4})
 
@@ -246,6 +246,11 @@ async def proxy_mission_dispatch(req: Request):
 @app.post("/api/mission/abort")
 async def proxy_mission_abort(req: Request):
     return await _proxy(req, "/api/mission/abort")
+
+
+@app.post("/api/mode/dispatch")
+async def proxy_mode_dispatch(req: Request):
+    return await _proxy(req, "/api/mode/dispatch")
 
 
 @app.websocket("/ws")

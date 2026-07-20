@@ -4,7 +4,7 @@
 
 import { useEffect, useState } from 'react'
 import { ViewHead, Panel } from '../bits'
-import { activeMode, saveActiveMode, type ActiveMode } from '../../lib/api'
+import { activeMode, saveActiveMode, dispatchMode, telemetryLatest, type ActiveMode } from '../../lib/api'
 
 const AUTONOMY_LEVELS = [
   { id: 0, label: 'Manual',     meta: 'Operator drives every command; rover executes nothing on its own.' },
@@ -69,6 +69,7 @@ export function ModesView() {
   const [active, setActive] = useState<ActiveMode | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [enforced, setEnforced] = useState<number | null>(null)  // live autonomy from the rover
 
   useEffect(() => {
     let alive = true
@@ -79,7 +80,12 @@ export function ModesView() {
       if (BRAINS.some(b => b.id === m.brain)) setBrain(m.brain)
       if (m.exists) setActive(m)
     }).catch(e => alive && setError(String(e)))
-    return () => { alive = false }
+    const pollEnforced = () => telemetryLatest('MARK1-SIM-001')
+      .then(t => { const a = t.kinds['autonomy']?.data as Record<string, unknown> | undefined; if (alive && a) setEnforced(Number(a['autonomy_level'])) })
+      .catch(() => {})
+    pollEnforced()
+    const iv = setInterval(pollEnforced, 3000)
+    return () => { alive = false; clearInterval(iv) }
   }, [])
 
   const isActive = !!active && active.autonomy_level === autonomy
@@ -91,6 +97,11 @@ export function ModesView() {
     try {
       const res = await saveActiveMode({ autonomy_level: autonomy, mission_profile: profile, brain })
       setActive(res)
+      // Also dispatch a SIGNED mode command to the sim rover so it ACTS on it
+      // (the rover's command router gates motion by the enforced autonomy level).
+      try {
+        await dispatchMode({ rover_id: 'MARK1-SIM-001', autonomy_level: autonomy, mission_profile: profile, brain })
+      } catch { /* rover offline: config still persisted to the Core Hub */ }
     } catch (e) {
       setError(String(e))
     } finally {
@@ -122,7 +133,10 @@ export function ModesView() {
         <Selector label="Mission profile" options={PROFILES} value={profile} onPick={setProfile} />
         <Selector label="Decision brain" options={BRAINS} value={brain} onPick={setBrain} />
 
-        <Panel title="Composed mode" meta={isActive ? <span className="dk-chip ok">CURRENT</span> : <span className="dk-chip standby">UNSAVED</span>}>
+        <Panel title="Composed mode" meta={<>
+          {enforced !== null && <span className="dk-chip ok" style={{ marginRight: 6 }}>ROVER ENFORCING L{enforced}</span>}
+          {isActive ? <span className="dk-chip ok">CURRENT</span> : <span className="dk-chip standby">UNSAVED</span>}
+        </>}>
           <div style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
             <div style={{ fontFamily: mono, fontSize: 15, color: 'var(--ice)', letterSpacing: '0.04em' }}>
               L{autonomy} · {levelLabel} <span style={{ color: 'var(--dim)' }}>×</span> {profile} <span style={{ color: 'var(--dim)' }}>×</span> {brain}

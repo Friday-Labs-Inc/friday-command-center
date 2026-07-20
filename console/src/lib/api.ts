@@ -485,6 +485,18 @@ export const dispatchSurvey = (body: MissionDispatchBody): Promise<MissionDispat
 export const abortMission = (body: MissionAbortBody): Promise<MissionDispatchResult> =>
   postJSON('/api/mission/abort', body)
 
+/** POST /api/mode/dispatch — publish a signed autonomy-mode command to the rover.
+ *  This is what makes the FCC mode ACT: the rover applies it (gates motion). */
+export interface ModeDispatchBody {
+  rover_id: string
+  autonomy_level: number
+  mission_profile?: string
+  brain?: string
+}
+export interface ModeDispatchResult { ok: boolean; autonomy_level: number; nonce: number }
+export const dispatchMode = (body: ModeDispatchBody): Promise<ModeDispatchResult> =>
+  postJSON('/api/mode/dispatch', body)
+
 // ── Telemetry recorder (gateway-local, data plane) ────────────────────────────
 
 export interface TelemetrySample {
