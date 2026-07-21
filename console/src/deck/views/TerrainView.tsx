@@ -13,6 +13,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { ROVERS, useDeck } from '../data'
 import { Panel, ViewHead, Legend } from '../bits'
 import { telemetryLatest } from '../../lib/api'
+import { TerrainRibbonPanel } from './TerrainRibbonPanel'
 import type { TelemetrySample } from '../../lib/api'
 
 const POLL_MS = 5000
@@ -567,6 +568,7 @@ export function TerrainView() {
             </div>
           )
         })() : null}
+        <TerrainRibbonPanel roverId={rover.id} />
       </div>
       <div style={{ position: 'absolute', bottom: 14, left: 20, zIndex: 5 }}>
         <Legend items={[['#3be896', 'rover · signed odom'], ['#48b6e5', 'reconstructed surface'], ['#f0a545', 'above rover · obstacle'], ['#000000', 'unmapped']]} />
