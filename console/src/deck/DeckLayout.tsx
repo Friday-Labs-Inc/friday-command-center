@@ -243,7 +243,7 @@ function Stream() {
       <div className="dk-cmdline">
         <span className="ps">mark1://cmd ▸</span>
         <input
-          placeholder="command dispatch arrives with the signing agent — input is parked for now"
+          placeholder="Read-only — start your local signing agent (127.0.0.1:7070) & enroll your key to dispatch. Your key never leaves your machine."
           aria-label="Command input"
           onKeyDown={(e) => {
             if (e.key === 'Enter' && e.currentTarget.value.trim()) {
@@ -252,7 +252,7 @@ function Stream() {
             }
           }}
         />
-        <span className="sig">SIGNING AGENT <b style={{ color: 'var(--dim)' }}>○ OFFLINE</b></span>
+        <span className="sig" title="Commands are signed by YOUR key, held in a local agent on your machine (127.0.0.1:7070) — never on the server. Start it to enable dispatch.">SIGNING AGENT <b style={{ color: 'var(--dim)' }}>○ OFFLINE</b></span>
       </div>
     </footer>
   )

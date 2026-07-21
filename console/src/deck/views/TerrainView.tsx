@@ -11,7 +11,7 @@ import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { ROVERS, useDeck } from '../data'
-import { Panel, ViewHead, Legend } from '../bits'
+import { Panel, ViewHead, Legend, HelpNote } from '../bits'
 import { telemetryLatest } from '../../lib/api'
 import { TerrainRibbonPanel } from './TerrainRibbonPanel'
 import type { TelemetrySample } from '../../lib/api'
@@ -479,6 +479,13 @@ export function TerrainView() {
           </button>
         </>}
       />
+      <div style={{ position: 'absolute', top: 104, left: 20, maxWidth: 430, zIndex: 5 }}>
+        <HelpNote>
+          What the rover senses as it drives. The <b>3D blocks</b> are a live reconstruction from its
+          lidar + depth camera. The <b>Terrain sensed</b> panel (lower right) is the operator read — a
+          top-down <b>drive · caution · block</b> map built along the path, with a bumper-cam photo.
+        </HelpNote>
+      </div>
       <div style={{ position: 'absolute', top: 16, right: 20, width: 250, zIndex: 5 }}>
         <Panel title="World model" meta={<>{chip(mapChip)} {sig}</>}>
           {meta ? (

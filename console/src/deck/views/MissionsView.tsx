@@ -9,7 +9,7 @@ import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { missions as fetchMissions, mission as fetchMission, type Mission, type Waypoint, dispatchSurvey, abortMission, approveWaypoint, telemetryLatest } from '../../lib/api'
 import { useDeck } from '../data'
-import { Panel } from '../bits'
+import { Panel, HelpNote } from '../bits'
 
 // ─── Sector canvas — plots a mission's real waypoints (auto-fit) ───────────────
 
@@ -105,7 +105,7 @@ function SectorCanvas({ waypoints }: { waypoints: Waypoint[] }) {
         ctx.fillText(lbl, 12, h - 12)
       } else {
         ctx.font = `11px 'SF Mono',Menlo,monospace`; ctx.fillStyle = 'rgba(90,115,150,0.9)'
-        ctx.fillText('no waypoints defined for this mission', 12, h / 2)
+        ctx.fillText('No waypoints yet — pick a zone and Dispatch Survey (right) to generate them', 12, h / 2)
       }
 
       if (!reduced) tick++
@@ -286,6 +286,9 @@ function DispatchPanel() {
   return (
     <Panel title="Dispatch Survey" meta={<>MARK1-SIM-001</>} style={{ display: 'flex', flexDirection: 'column' }}>
       <div style={{ flex: 1, padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ fontSize: 11, color: 'var(--dim)', lineHeight: 1.5 }}>
+          Pick a zone; the rover sweeps it in 3 m lanes and tracks how much of it it covered.
+        </div>
         {/* zone selector */}
         <div>
           <div style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--dim)', marginBottom: 5, letterSpacing: '0.08em' }}>
@@ -461,6 +464,13 @@ export function MissionsView() {
                 : 'reading /api/missions…'}
         </div>
       </div>
+
+      <HelpNote>
+        A <b>mission</b> is a job for the rover. Pick a <b>survey zone</b> (right) → the system lays a
+        lawnmower pattern of waypoints → it's <b>approved</b> → signed &amp; sent to the rover → the rover
+        drives the pattern and reports <b>% coverage</b> back here. Read-only until your signing agent is
+        running (bottom bar).
+      </HelpNote>
 
       {/* body */}
       <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr', gap: 14, minHeight: 0 }}>

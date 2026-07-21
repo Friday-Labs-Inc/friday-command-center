@@ -294,3 +294,10 @@
 @media (prefers-reduced-motion: reduce) {
   .dk-root *, .dk-root *::before, .dk-root *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
+
+.dk-help {
+  font-size: 11.5px; line-height: 1.55; color: var(--dim);
+  background: rgba(8,14,22,0.55); border-left: 2px solid rgba(90,115,150,0.45);
+  padding: 7px 11px; margin: 8px 0 0; max-width: 620px; border-radius: 0 4px 4px 0;
+}
+.dk-help b { color: #aac4e4; font-weight: 600; }

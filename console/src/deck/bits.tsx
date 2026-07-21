@@ -30,6 +30,11 @@ export function ViewHead({ eyebrow, title, sub }: { eyebrow: string; title: stri
   )
 }
 
+/** Plain-English explainer line — teaches a newcomer what a screen or panel is for. */
+export function HelpNote({ children }: { children: ReactNode }) {
+  return <div className="dk-help">{children}</div>
+}
+
 /** Honest-UI marker for any data not yet fed by real rover hardware. */
 export function SimBadge({ label = 'SIMULATED FEED' }: { label?: string }) {
   return <span className="dk-sim">{label}</span>
