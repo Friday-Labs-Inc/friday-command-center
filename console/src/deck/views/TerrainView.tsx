@@ -505,21 +505,31 @@ export function TerrainView() {
               {missionS?.data ? (() => {
                 const md = missionS.data as Record<string, unknown>
                 const state = String(md['state'] ?? '?')
+                const mid = String(md['mission_id'] ?? '—')
                 const wi = md['waypoint_i']; const wn = md['waypoint_n']
                 const cov = md['coverage_pct']
+                const skipped = Number(md['skipped'] ?? 0)
                 const cls = state === 'active' ? 'dk-chip ok' : state === 'complete' ? 'dk-chip ok' : state === 'failed' || state === 'aborted' ? 'dk-chip crit' : 'dk-chip prov'
+                const note = state === 'complete' ? 'coverage complete'
+                  : (skipped > 0 && Number(cov) === 0) ? `${skipped} waypoint${skipped === 1 ? '' : 's'} unreachable so far — the rover can't plan into ground SLAM hasn't mapped yet`
+                  : state === 'active' ? 'driving the coverage pattern'
+                  : (state === 'failed' || state === 'aborted') ? 'survey ended without covering the zone'
+                  : ''
                 return (
                   <div style={{ borderTop: '1px dotted rgba(90,115,150,0.25)', paddingTop: 6, display: 'grid', gap: 4 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <span style={{ opacity: 0.55 }}>survey</span>
                       <span className={cls}>{state.toUpperCase()}</span>
                     </div>
-                    {wi != null && wn != null ? (
-                      <div style={{ display: 'grid', gridTemplateColumns: '78px 1fr', columnGap: 8 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '78px 1fr', columnGap: 8, rowGap: 3 }}>
+                      <span style={{ opacity: 0.55 }}>mission</span><b style={{ fontFamily: 'var(--mono)', fontSize: 11 }}>{mid}</b>
+                      {wi != null && wn != null ? <>
                         <span style={{ opacity: 0.55 }}>waypoint</span><b>{String(wi)} / {String(wn)}</b>
                         <span style={{ opacity: 0.55 }}>coverage</span><b>{cov != null ? `${cov}%` : '—'}</b>
-                      </div>
-                    ) : null}
+                        <span style={{ opacity: 0.55 }}>skipped</span><b style={{ color: skipped > 0 ? 'var(--warn, #d29922)' : undefined }}>{skipped}</b>
+                      </> : null}
+                    </div>
+                    {note ? <div style={{ opacity: 0.6, fontSize: 10.5, lineHeight: 1.4, marginTop: 2 }}>{note}</div> : null}
                   </div>
                 )
               })() : null}
