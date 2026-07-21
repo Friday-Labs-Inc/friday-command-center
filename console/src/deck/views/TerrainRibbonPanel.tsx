@@ -14,6 +14,7 @@ export function TerrainRibbonPanel({ roverId }: { roverId: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [meta, setMeta] = useState<RibbonMeta | null>(null)
   const [signed, setSigned] = useState(false)
+  const [keyframe, setKeyframe] = useState<string | null>(null)
   const stampRef = useRef(0)
   const roverRef = useRef<{ x: number; y: number } | null>(null)
 
@@ -27,6 +28,8 @@ export function TerrainRibbonPanel({ roverId }: { roverId: string }) {
         if (!alive) return
         const od = latest.kinds['odom']?.data as Record<string, unknown> | undefined
         if (od && typeof od['x'] === 'number') roverRef.current = { x: Number(od['x']), y: Number(od['y']) }
+        const kf = latest.kinds['terrain_keyframe']?.data as Record<string, unknown> | undefined
+        if (kf && typeof kf['data'] === 'string') setKeyframe(kf['data'] as string)
         const s = latest.kinds['terrain_grid']
         if (!s) return
         const stamp = Number((s.data as Record<string, unknown> | undefined)?.['stamp'] ?? 0)
@@ -69,6 +72,13 @@ export function TerrainRibbonPanel({ roverId }: { roverId: string }) {
             no terrain ribbon yet — drive the rover so the classifier reads the ground
           </div>
         )}
+        {keyframe ? (
+          <div style={{ marginTop: 8 }}>
+            <img src={`data:image/jpeg;base64,${keyframe}`} alt="rover ground view"
+              style={{ width: '100%', borderRadius: 4, display: 'block' }} />
+            <div style={{ opacity: 0.5, fontSize: 10, marginTop: 2 }}>bumper cam · the ground ahead</div>
+          </div>
+        ) : null}
       </Panel>
     </div>
   )
