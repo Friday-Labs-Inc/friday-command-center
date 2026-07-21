@@ -189,9 +189,9 @@ function Dot({ status }: { status: DStep['status'] }) {
 const DISPATCH_ROVER = 'MARK1-SIM-001'
 
 const ZONE_PRESETS: Array<{ label: string; zone: [number, number, number, number] }> = [
-  { label: '30×30 m @ spawn', zone: [-15, -15, 15, 15] },
-  { label: '60×60 m', zone: [-30, -30, 30, 30] },
-  { label: '20×10 m N-strip', zone: [-10, 0, 10, 10] },
+  { label: '5×5 m @ spawn', zone: [-2.5, -2.5, 2.5, 2.5] },
+  { label: '6×6 m @ spawn', zone: [-3, -3, 3, 3] },
+  { label: '3×6 m strip', zone: [-1.5, -3, 1.5, 3] },
 ]
 
 interface MissionProgress {
@@ -272,7 +272,7 @@ function DispatchPanel() {
       const res = await dispatchSurvey({
         rover_id: DISPATCH_ROVER,
         zone: preset.zone,
-        lane_spacing_m: 3.0,
+        lane_spacing_m: 1.5,
         speed: 0.28,
       })
       setActiveMissionId(res.mission_id)
@@ -326,7 +326,7 @@ function DispatchPanel() {
             ))}
           </div>
           <div style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--dim)', marginTop: 5 }}>
-            zone {ZONE_PRESETS[presetIdx].zone.join(', ')} m · lane 3 m · 0.28 m/s
+            zone {ZONE_PRESETS[presetIdx].zone.join(', ')} m · lane 1.5 m · 0.28 m/s
           </div>
         </div>
 
