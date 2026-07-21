@@ -13,6 +13,23 @@ import { Panel, HelpNote } from '../bits'
 
 // ─── Sector canvas — plots a mission's real waypoints (auto-fit) ───────────────
 
+// Generate the lawnmower (boustrophedon) coverage pattern a survey zone expands into,
+// so the Sector Map shows the planned path instead of a blank box.
+function surveyPreview(zone: number[], lane: number): Waypoint[] {
+  const [x0, y0, x1, y1] = zone
+  const xlo = Math.min(x0, x1), xhi = Math.max(x0, x1)
+  const ylo = Math.min(y0, y1), yhi = Math.max(y0, y1)
+  const step = Math.max(0.5, lane || 3)
+  const wps: Waypoint[] = []
+  let seq = 0, up = true
+  for (let x = xlo; x <= xhi + 1e-6; x += step) {
+    wps.push({ seq: seq++, x, y: up ? ylo : yhi, action: 'survey' })
+    wps.push({ seq: seq++, x, y: up ? yhi : ylo, action: 'survey' })
+    up = !up
+  }
+  return wps
+}
+
 function SectorCanvas({ waypoints }: { waypoints: Waypoint[] }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -245,6 +262,8 @@ function DispatchPanel() {
   }
 
   const handleDispatch = async () => {
+    if (isActive) { pushEvent('mission', 'a survey is already running — abort it first', 'warn'); return }
+    if (!window.confirm(`Dispatch a survey over ${ZONE_PRESETS[presetIdx].label}? This commands the rover.`)) return
     setDispatching(true)
     setDispatchErr(null)
     setProgress(null)
@@ -315,10 +334,10 @@ function DispatchPanel() {
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button
             className="dk-btn primary"
-            disabled={dispatching}
+            disabled={dispatching || !!isActive}
             onClick={handleDispatch}
           >
-            {dispatching ? 'DISPATCHING…' : 'DISPATCH SURVEY'}
+            {dispatching ? 'DISPATCHING…' : isActive ? 'SURVEY RUNNING' : 'DISPATCH SURVEY'}
           </button>
           {activeMissionId && (
             <button
@@ -331,6 +350,11 @@ function DispatchPanel() {
             </button>
           )}
         </div>
+        {isActive && (
+          <div style={{ fontSize: 10.5, color: 'var(--dim)', lineHeight: 1.4 }}>
+            One survey at a time — abort the running one before dispatching another.
+          </div>
+        )}
 
         {dispatchErr && (
           <div style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--crit)' }}>
@@ -442,6 +466,15 @@ export function MissionsView() {
 
   const steps = useMemo(() => (detail ? deriveSteps(detail) : []), [detail])
   const waypoints = detail?.waypoints ?? []
+  const previewWps = useMemo<Waypoint[]>(() => {
+    if (waypoints.length) return []
+    try {
+      const pl = detail?.mission_payload ? JSON.parse(detail.mission_payload) : null
+      if (Array.isArray(pl?.zone)) return surveyPreview(pl.zone, Number(pl.lane_spacing_m) || 3)
+    } catch { /* payload not a survey */ }
+    return []
+  }, [detail, waypoints.length])
+  const sectorWps = waypoints.length ? waypoints : previewWps
 
   const head = detail ?? list?.find((m) => m.name === sel) ?? null
 
@@ -475,8 +508,8 @@ export function MissionsView() {
       {/* body */}
       <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr', gap: 14, minHeight: 0 }}>
         {/* left: sector map from real waypoints */}
-        <Panel title="Sector Map" meta={<>waypoints · fit</>} style={{ display: 'flex', flexDirection: 'column' }}>
-          <SectorCanvas waypoints={waypoints} />
+        <Panel title="Sector Map" meta={<>{waypoints.length ? 'waypoints' : previewWps.length ? 'preview · planned coverage' : 'waypoints'} · fit</>} style={{ display: 'flex', flexDirection: 'column' }}>
+          <SectorCanvas waypoints={sectorWps} />
         </Panel>
 
         {/* centre: mission selector + real lifecycle */}
